@@ -250,6 +250,25 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Legend lists runs with their settings and fork origin; click to select a lane.
 - "table view" swaps the chart for a table with one row per step and the full
   candidate list. It is the accessibility fallback for the chart.
+- "compare runs" (`?compare=1`) compares two runs that share a prompt.
+  `compareData()` builds it: `pathOf(run)` rebuilds a run's full token path by
+  global step by walking up the branch chain (the forced candidate at the fork
+  carries the probability its parent reported for it), and the divergence step
+  is the first position where the two paths differ. `render()` then appends
+  three tracks under the lanes inside the Sankey SVG (`drawCompare`, height
+  `CMP_H`), so they share the column x positions and scroll with the runs, in
+  the two run colors: same token or not (one gray cell, or a cell split in the
+  two colors), hesitation per step as bars of Shannon entropy in bits of the
+  reported distribution (top-K plus the tail as one bucket, so a lower bound),
+  and the accumulated path logprob since the split as one line per run with the
+  gap shaded. The panel under the chart (`#compare`, `renderCompare()`) holds
+  the two run selects and a summary sentence: positional token matches, shared
+  distinct tokens, mean hesitation, and path logprobs over the same number of
+  steps so a longer run is not penalised, with the likelihood ratio. In
+  advanced mode the panel adds the numbers as a table. Default pair: the
+  selected branch and its parent, else the latest branch and its parent, else
+  the first two runs; the selects override it. Semantic divergence (embedding
+  distance between the two continuations) is not implemented; see plan.md.
 - Query string: any control id as a parameter prefills it (`chat=1` selects
   assistant mode, `think=1`, `post=1`, `advanced=1`; `engine=browser` plus
   optional `model=<url>` loads a model first); `run=1` starts a run on load; `branch=<step>:<rank>` or

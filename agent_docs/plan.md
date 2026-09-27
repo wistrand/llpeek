@@ -102,6 +102,28 @@ tokens and continues identically to the original run. `deno task shot` with
 `branch=4:1&branch=7:1` on the reference prompt produces `docs/screenshot-*.png`
 with three lanes.
 
+### Phase 4: comparing runs
+
+- [x] Difference view (2026-09-27): "compare runs" draws three tracks under the
+      lanes, aligned to the columns from the divergence step: token match,
+      entropy in bits, and accumulated path logprob per run. A summary sentence
+      sits under the chart; the numbers as a table only in advanced mode. Root
+      runs with the same prompt compare from the first differing token;
+      branches from the fork.
+- [ ] Semantic divergence: distance between the two continuations' embeddings,
+      per step or for the whole tail. Needs an embedding source: wllama has
+      `createEmbedding`, llama-server only serves `/embedding` when started with
+      `--embedding` (and the 2B chat model's embeddings are of doubtful quality;
+      a small dedicated embedding model would be a second download). Decide
+      whether it is worth a second model before building it.
+Note on the browser model list: SmolLM2 360M, Gemma 3 1B and Llama 3.2 1B were
+probed headless on 2026-09-27 and generate through their own chat templates.
+SmolLM3 3B Q4_K_M was only checked for size and CORS.
+
+**Verify:** `deno task headless "<app>?run=1&engine=server&base=http://localhost:8089&prompt=The%20capital%20of%20France%20is&n_predict=8&seed=3&temperature=1.0&branch=4:1&compare=1" 90 "document.querySelectorAll('#chart .cmp rect').length + ' | ' + document.getElementById('compare').innerText"`
+prints a rect count above zero and a summary starting "From step 4". `deno task shot`
+with the same URL shows the three tracks under the lanes, aligned to the columns.
+
 ## Open questions
 
 - **Rendering cost.** `render()` rebuilds the SVG on every step. Fine so far;

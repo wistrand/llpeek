@@ -33,7 +33,12 @@ during the phases without bytes. Steps:
    Output matched llama-server's `/apply-template` byte for byte for Qwen3.5.
 
 Model URLs: any CORS-enabled URL. The UI offers a curated list (`MODELS` in the
-UI block) and a free URL field. Default: Hugging Face
+UI block: Qwen3.5 2B in two quants, SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B,
+SmolLM3 3B Q4, stories260K) and a free URL field. The string-form
+`logit_bias [["<think>", false]]` is sent to every model when thinking is off;
+on SmolLM2, which has no `<think>` token, the output at temperature 0 was
+identical with and without it (probed 2026-09-27), so it is inert there rather
+than harmful. Default: Hugging Face
 `bartowski/Qwen_Qwen3.5-2B-GGUF`, file `Qwen_Qwen3.5-2B-Q8_0.gguf` (2.08 GB,
 byte-identical to the local server default). Hugging Face `resolve` links 302 to
 a CDN; with a browser `Origin` header the redirect echoes the origin and the CDN

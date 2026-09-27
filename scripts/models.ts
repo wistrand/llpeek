@@ -19,6 +19,9 @@ const KNOWN: Record<string, { url: string; note: string }> = {
   "smollm3-q4":        { url: `${HF}/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q4_K_M.gguf`, note: "1.9 GB, Q4_K_M, fits the browser" },
   "granite-4.0-h-tiny":{ url: `${HF}/ibm-granite/granite-4.0-h-tiny-GGUF/resolve/main/granite-4.0-h-tiny-Q8_0.gguf`, note: "7.4 GB, Q8_0, hybrid mamba/transformer MoE" },
   "granite-4.2-3b":    { url: `${HF}/ibm-granite/granite-4.2-3b-GGUF/resolve/main/granite-4.2-3b-Q8_0.gguf`, note: "3.9 GB, Q8_0" },
+  "smollm2-360m":      { url: `${HF}/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf`, note: "0.4 GB, Q8_0, small and fast; in the browser list" },
+  "gemma3-1b":         { url: `${HF}/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf`, note: "1.1 GB, Q8_0; in the browser list" },
+  "llama3.2-1b":       { url: `${HF}/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf`, note: "1.3 GB, Q8_0; in the browser list" },
   "stories260k":       { url: `${HF}/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf`, note: "1 MB, toy model for testing the tooling" },
 };
 

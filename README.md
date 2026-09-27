@@ -60,8 +60,11 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
   offers only this engine; the server option appears when the page is served
   by `deno task serve`, which also looks for the server when the page opens.
 - Hover a node for details, click a gray candidate to branch from it, click a
-  run's label to fold it, or switch to "as a table". Sampling knobs, the server
-  address and the technical readouts are under "advanced".
+  run's label to fold it, or switch to "as a table". "compare runs" lines up
+  two runs from the step where they part: which tokens match, how much the
+  model hesitated at each step, and how the path probability drifts apart.
+  Sampling knobs, the server address and the technical readouts are under
+  "advanced".
 
 ## Related
 
@@ -84,5 +87,5 @@ serves it exactly as Pages will: browser engine only, no isolation headers.
 Working: streaming generation, the Sankey trace, branching from any candidate,
 side-by-side runs, extending runs by raising the length, chat-template mode with
 thinking on or off, a sampler view showing what survived top-k / top-p / min-p /
-temperature, collapsible lanes, table view, light and dark mode. See
-`agent_docs/plan.md`.
+temperature, collapsible lanes, table view, a compare view for two runs after
+they diverge, light and dark mode. See `agent_docs/plan.md`.
