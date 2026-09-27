@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llpeek</title>
+<meta name="description" content="Watch a language model write one token at a time: how sure it was and what else it considered. Pick a different candidate and see where it leads.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --line: #c3c2b7; --accent: #2a78d6; --cand: #c3c2b7; --other: #e1e0d9; --other-ink: #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --line: #383835; --accent: #3987e5; --cand: #52514e; --other: #2c2c2a; --other-ink: #898781;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --line: #383835; --accent: #3987e5; --cand: #52514e; --other: #2c2c2a; --other-ink: #898781;
+  }
+  body { margin: 0; padding: 0 16px 48px; background: var(--page); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; }
+  header { padding: 40px 0 8px; }
+  h1 { font-size: 34px; margin: 0; letter-spacing: -0.01em; }
+  .tagline { font-size: 19px; color: var(--ink-2); margin: 6px 0 20px; max-width: 60ch; }
+  h2 { font-size: 20px; margin: 40px 0 10px; }
+  p { margin: 8px 0; max-width: 70ch; }
+  a { color: var(--accent); }
+  .cta { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
+         padding: 10px 22px; border-radius: 6px; margin: 4px 12px 4px 0; }
+  .cta.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .shot { display: block; margin: 20px 0 6px; border: 1px solid var(--grid); border-radius: 6px; overflow: hidden; background: var(--surface); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .caption { color: var(--muted); font-size: 13px; }
+  .legend { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+  .legend li { display: flex; gap: 10px; align-items: baseline; }
+  .sw { flex: none; width: 12px; height: 12px; border-radius: 2px; position: relative; top: 1px; }
+  .sw.picked { background: var(--accent); }
+  .sw.cand { background: var(--cand); }
+  .sw.other { background: repeating-linear-gradient(45deg, var(--other-ink) 0 1px, var(--other) 1px 4px); }
+  .sw.ribbon { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+  .sw.branch { background: #eb6834; }
+  .sw.quiet { background: var(--accent); opacity: 0.35; }
+  pre { background: var(--surface); border: 1px solid var(--grid); border-radius: 6px; padding: 12px 14px;
+        overflow: auto; font-size: 14px; }
+  code { font-size: 0.95em; }
+  .note { border-left: 3px solid var(--line); padding: 2px 12px; color: var(--ink-2); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>llpeek</h1>
+  <p class="caption">Large Language Peek. Companion to <a href="https://github.com/wistrand/llav">llav</a>, which turns the same probabilities into verdicts.</p>
+  <p class="tagline">Watch a language model write one token at a time: how sure it was and what else it considered. Pick a different candidate and see where it leads.</p>
+  <a class="cta" href="app.html">Try it in your browser</a>
+  <a class="cta secondary" href="https://github.com/wistrand/llpeek">Source on GitHub</a>
+  <p class="caption">The browser version downloads a 2 GB model once and runs it on your machine with WebAssembly. Nothing you type leaves your computer.</p>
+</header>
+
+<a class="shot" href="screenshot-dark.png"><img src="thumb-dark.png" alt="llpeek showing a Sankey of candidate tokens per step for the prompt 'The capital of France is', with a second run branched where the model considered Lyon"></a>
+<p class="caption">Two runs of "The capital of France is". At step 4 the model picked " Paris" but had also considered " Lyon"; clicking that gray node started the orange run, which shows what the model would have written next.</p>
+
+<h2>How to read it</h2>
+<p>A language model does not write words. At every step it scores every token in its vocabulary, a token being a word or a piece of one, and a sampler picks one. llpeek draws that step as a column.</p>
+<ul class="legend">
+  <li><span class="sw picked"></span><span><b>The colored node</b> is the token that was picked. Its height is the chance the model gave it.</span></li>
+  <li><span class="sw cand"></span><span><b>Gray nodes</b> are tokens it considered but did not pick, tallest first. Click one to branch: a new run continues from that alternative, in its own color.</span></li>
+  <li><span class="sw other"></span><span><b>The hatched node</b> is everything else it considered, all the small chances added together.</span></li>
+  <li><span class="sw ribbon"></span><span><b>The ribbon</b> carries the picked token into the next column: the next step's choices depend on it. Fading stubs are alternatives that lead nowhere, because they were never followed.</span></li>
+  <li><span class="sw branch"></span><span><b>Column width is hesitation.</b> Where the model was sure, the column is only as wide as its token and the trace reads like text. Where it deliberated, the column opens up.</span></li>
+  <li><span class="sw quiet"></span><span><b>Faded columns</b> are confident whitespace and punctuation: formatting, not decisions.</span></li>
+</ul>
+<p>The line above each run is the output, aligned with its columns, so you can read what was written and see where it was decided. Hover anything for the numbers. Raise the length after a run to keep it going. "Advanced" reveals the sampler settings, a seed for reproducible runs, a side-by-side comparison of settings, and a view of what the sampler was allowed to pick from after its filters.</p>
+
+<h2>Try it</h2>
+<p><a href="app.html">Open the app</a>, press "load model" and wait for the download (2 GB, cached afterwards). Then type a prompt and press Run. A 1 MB toy model is in the list if you only want to see the tooling move.</p>
+<p class="note">The in-browser engine is <a href="https://github.com/ngxson/wllama">wllama</a>, llama.cpp compiled to WebAssembly. Expect around 10 tokens per second on a laptop. Chrome and Firefox work; the page installs a small service worker so the model can use several threads.</p>
+
+<h2>Run it locally</h2>
+<p>With a local <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> server the same page runs several times faster and works with any GGUF you have. You need <code>llama-server</code> on your path and <a href="https://deno.com">Deno</a>.</p>
+<pre>git clone https://github.com/wistrand/llpeek
+cd llpeek
+deno task model qwen3.5-2b   # download the 2B model into ~/models, once
+deno task dev                # llama-server on :8089 and the app on http://localhost:8000</pre>
+<p><code>deno task model</code> with no arguments lists the known models. The app talks to llama-server's <code>/completion</code> endpoint with <code>n_probs</code>, which returns the top candidates for every generated token; branches continue from the exact token sequence. The locally served page offers both engines and looks for the server when it opens; this published page runs in the browser only.</p>
+
+<footer>
+  llpeek is a single HTML file with no build step. <a href="https://github.com/wistrand/llpeek">Source</a>. Screenshots: <a href="screenshot-dark.png">dark</a>, <a href="screenshot-light.png">light</a>.
+</footer>
+</main>
+</body>
+</html>

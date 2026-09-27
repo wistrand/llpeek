@@ -1,0 +1,36 @@
+{
+  "tasks": {
+    "llama": {
+      "description": "Start llama-server on :8089 with the default model. Append flags to override, e.g. deno task llama -m ~/models/SmolLM3-Q8_0.gguf",
+      "command": "llama-server -m $HOME/models/Qwen_Qwen3.5-2B-Q8_0.gguf --port 8089 -c 4096"
+    },
+    "serve": {
+      "description": "Serve docs/ (the site: landing page at /, app at /app.html) on http://localhost:8000 (PORT env overrides), with COOP/COEP headers",
+      "command": "deno run --allow-net --allow-read=. --allow-env=PORT,PAGES scripts/serve.ts"
+    },
+    "dev": {
+      "description": "llama-server and the static server together",
+      "command": "deno task llama & deno task serve"
+    },
+    "check": {
+      "description": "Verify the data layer against a running llama-server: deno task check [base-url]",
+      "command": "deno run --allow-net --allow-read=. scripts/check.mjs"
+    },
+    "shot": {
+      "description": "Screenshot the app (light and dark) after a run: deno task shot [page-url] [out-dir]; default url http://localhost:8000/app.html?run=1",
+      "command": "deno run --allow-net --allow-run=google-chrome-stable --allow-write --allow-read scripts/shot.ts"
+    },
+    "headless": {
+      "description": "Load a page in headless Chrome and print #out once it starts with DONE or ERROR: deno task headless <url>",
+      "command": "deno run --allow-net --allow-run=google-chrome-stable scripts/headless.ts"
+    },
+    "model": {
+      "description": "List or download GGUF models into ~/models: deno task model [name|url ...]",
+      "command": "deno run --allow-net --allow-env=HOME --allow-read=$HOME/models --allow-write=$HOME/models scripts/models.ts"
+    },
+    "pages": {
+      "description": "Serve docs/ exactly as GitHub Pages would: no server engine, no isolation headers (the service worker must provide them)",
+      "command": "PAGES=1 deno task serve"
+    }
+  }
+}

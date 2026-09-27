@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llpeek</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --line: #c3c2b7;
+    --chosen: #2a78d6; --chosen-soft: rgba(42,120,214,0.30);
+    --cand: #c3c2b7; --cand-soft: rgba(137,135,129,0.28);
+    --other: #e1e0d9; --other-ink: #898781;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --line: #383835;
+      --chosen: #3987e5; --chosen-soft: rgba(57,135,229,0.32);
+      --cand: #52514e; --cand-soft: rgba(137,135,129,0.28);
+      --other: #2c2c2a; --other-ink: #898781;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --line: #383835;
+    --chosen: #3987e5; --chosen-soft: rgba(57,135,229,0.32);
+    --cand: #52514e; --cand-soft: rgba(137,135,129,0.28);
+    --other: #2c2c2a; --other-ink: #898781;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+  body { margin: 0; padding: 16px; background: var(--page); color: var(--ink);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .intro { margin: 0 0 12px; color: var(--ink-2); max-width: 70ch; }
+  .range { display: flex; align-items: center; gap: 6px; }
+  .range input { width: 110px; }
+  output { font-variant-numeric: tabular-nums; min-width: 2.2em; }
+  #hint { max-width: 80ch; }
+  form { max-width: 1100px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin-top: 8px; }
+  .spacer { flex: 1; }
+  .panel { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin-top: 8px; padding: 10px 12px;
+           background: var(--surface); border: 1px solid var(--grid); border-radius: 4px; }
+  .panel label { min-width: 80px; }
+  .panel label:first-child { min-width: 220px; }
+  .checks { display: flex; gap: 10px; padding: 5px 0; }
+  select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  #loadInfo { display: inline-flex; align-items: center; gap: 8px; }
+  #loadInfo.hidden { display: none; }
+  progress { accent-color: var(--chosen); width: 200px; height: 8px; }
+  #loadText { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+  .toolbar button { padding: 3px 8px; font-size: 12px; }
+  label.inline { flex-direction: row; align-items: center; gap: 4px; }
+  .legend .l-post::before { background: transparent; border: 1.5px solid var(--ink-2); box-sizing: border-box; }
+  #chart rect.post { stroke: var(--surface); stroke-width: 1px; }
+  label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-2); }
+  label input[type="checkbox"] { vertical-align: -1px; margin: 0 2px 0 0; }
+  label.mode { white-space: nowrap; }
+  input, textarea, button { font: inherit; color: var(--ink); background: var(--surface);
+         border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-width: 0; }
+  textarea { display: block; width: 100%; box-sizing: border-box; min-height: 70px; resize: vertical; }
+  button { cursor: pointer; }
+  button.primary { background: var(--chosen); border-color: var(--chosen); color: #fff; font-weight: 600; padding: 6px 22px; }
+  button.primary:disabled { opacity: 0.5; cursor: default; }
+  button:disabled { color: var(--muted); }
+  button[aria-pressed="true"] { background: var(--grid); }
+  #status { margin: 8px 0; color: var(--ink-2); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  #spin { flex: none; width: 12px; height: 12px; border-radius: 50%; display: none; box-sizing: border-box;
+          border: 2px solid var(--line); border-top-color: var(--chosen); will-change: transform;
+          animation: spin 0.9s linear infinite; }
+  body.busy #spin { display: block; }
+  body.busy #stop { border-color: var(--chosen); color: var(--chosen); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.8; } }
+  @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  #chart rect.next { fill: none; stroke: var(--c); stroke-width: 1.5px; stroke-dasharray: 3 3; animation: pulse 1.2s ease-in-out infinite; }
+  #chart path.next { animation: pulse 1.2s ease-in-out infinite; }
+  #text .caret { display: inline-block; width: 2px; height: 1em; background: var(--c); vertical-align: -2px; margin-left: 1px; animation: blink 1s steps(1) infinite; }
+  /* Reduced motion: the pulse and caret stop; the small spinner stays, it is the one busy cue. */
+  @media (prefers-reduced-motion: reduce) {
+    #chart rect.next, #chart path.next, #text .caret { animation: none; }
+    #chart rect.next { opacity: 0.6; }
+  }
+  #text { margin: 8px 0; padding: 8px; background: var(--surface); border: 1px solid var(--grid);
+          border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 13px;
+          max-height: 200px; overflow: auto; user-select: text; }
+  #text:empty { display: none; }
+  #text .t { cursor: pointer; border-radius: 2px; }
+  #text .t:hover { background: var(--grid); }
+  #text .p { color: var(--muted); }
+  #text .row { display: flex; gap: 8px; align-items: baseline; }
+  #text .row + .row { margin-top: 4px; }
+  #text .sw { flex: none; width: 10px; height: 10px; border-radius: 2px; background: var(--c); position: relative; top: 1px; }
+  #text .f { color: var(--muted); }
+  #text .sel { outline: 1px solid var(--ink); }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 5px;
+          vertical-align: -1px; border-radius: 2px; }
+  .legend .l-run::before { background: var(--c); }
+  .legend .l-run { cursor: pointer; }
+  .legend .l-run.sel { color: var(--ink); font-weight: 600; }
+  .legend .l-cand::before   { background: var(--cand); }
+  .legend .l-other::before  { background: repeating-linear-gradient(45deg, var(--other-ink) 0 1px, var(--other) 1px 4px); }
+  #chart { overflow-x: auto; background: var(--surface); border: 1px solid var(--grid); border-radius: 4px; }
+  #chart svg { display: block; }
+  #chart text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink-2);
+                paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+  #chart text.chosen { fill: var(--ink); font-weight: 600; }
+  #chart text.idx { fill: var(--muted); font-variant-numeric: tabular-nums; }
+  #chart text.lane { fill: var(--ink-2); font-weight: 600; cursor: pointer; }
+  #chart text.lane:hover { fill: var(--ink); }
+  #chart rect.mini { stroke: none; }
+  #chart rect.quiet { fill-opacity: 0.35; }
+  #chart text.quiet { fill: var(--muted); font-weight: 400; }
+  #chart text.line { fill: var(--ink); font-weight: 600; cursor: pointer; }
+  #chart text.line.quiet { fill: var(--muted); font-weight: 400; }
+  #chart rect.cand:hover { stroke: var(--ink); }
+  #chart rect.node { stroke: var(--surface); stroke-width: 1px; cursor: pointer; }
+  #chart rect.hit { fill: transparent; cursor: pointer; }
+  #chart .col.sel rect.chosen { stroke: var(--ink); stroke-width: 1.5px; }
+  #tip { position: fixed; pointer-events: none; display: none; background: var(--surface); color: var(--ink);
+         border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font-size: 12px;
+         box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 10; max-width: 320px; }
+  #tip b { font-weight: 600; }
+  #tip .m { color: var(--ink-2); }
+  table { border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { color: var(--ink-2); font-weight: 500; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.sel td { background: var(--grid); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>llpeek</h1>
+<p class="intro">Watch a language model write one token at a time: how sure it was, and what else it considered.
+A token is a word or a piece of one.</p>
+
+<form id="f" onsubmit="return false">
+  <textarea id="prompt" placeholder="Type something for the model to continue, or a question to answer. Ctrl+Enter runs it." spellcheck="false">The capital of France is</textarea>
+  <div class="bar">
+    <button id="run" class="primary" title="Ctrl+Enter">Run</button>
+    <button id="stop" disabled title="Escape">Stop</button>
+    <label title="0 = always take the most likely token. Higher = more surprising choices.">randomness
+      <span class="range"><input id="temperature" type="range" min="0" max="2" step="0.1" value="0.8"><output id="tempOut">0.8</output></span>
+    </label>
+    <label title="How many tokens to generate">length <input id="n_predict" type="number" value="24" min="1"></label>
+    <label title="Continue: the model just carries on from your text. Answer: your text is wrapped as a question to an assistant, the way chat apps do.">mode
+      <select id="mode">
+        <option value="raw">continue my text</option>
+        <option value="chat">answer as an assistant</option>
+      </select>
+    </label>
+    <label class="mode" title="Let the model write out its reasoning before answering (assistant mode only)">
+      <span class="checks"><span><input id="think" type="checkbox"> think first</span></span>
+    </label>
+    <label title="Where the model runs">run on
+      <select id="engine">
+        <option value="server">local llama-server</option>
+        <option value="browser">this browser</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <button id="adv" aria-expanded="false" aria-controls="advanced" title="Technical settings and readouts">advanced &#9656;</button>
+  </div>
+  <div id="browserRow" class="panel hidden">
+    <label>model <select id="model"></select></label>
+    <label id="modelUrlLabel" class="hidden">model URL <input id="modelUrl" placeholder="https://huggingface.co/<repo>/resolve/main/<file>.gguf" size="52"></label>
+    <button id="load">load model</button>
+    <span id="loadInfo" class="hidden"><progress id="loadBar" max="100"></progress><span id="loadText" class="muted"></span></span>
+  </div>
+  <div id="advanced" class="panel hidden">
+    <label>llama-server URL <input id="base" value="http://localhost:8089"></label>
+    <button id="check">check connection</button>
+    <label title="How many candidates the model reports per step (n_probs)">candidates per step <input id="n_probs" type="number" value="8" min="1" max="1000"></label>
+    <label title="Sampler: keep only the k most likely tokens">top_k <input id="top_k" type="number" value="40" min="0"></label>
+    <label title="Sampler: keep the smallest set of tokens whose chances add up to p">top_p <input id="top_p" type="number" value="0.95" step="0.05" min="0" max="1"></label>
+    <label title="Sampler: drop tokens less likely than this fraction of the best one">min_p <input id="min_p" type="number" value="0.05" step="0.01" min="0" max="1"></label>
+    <label title="Same seed and settings reproduce the same output">seed <input id="seed" type="number" value="1"></label>
+    <button id="add" title="Add a run with the current settings as a new lane, keeping existing lanes">add a run to compare</button>
+    <label class="inline" title="Second pass with post_sampling_probs: what the sampler could pick from after top_k, top_p, min_p and randomness"><input id="post" type="checkbox"> show sampler filtering</label>
+  </div>
+</form>
+<div id="status"><span id="spin" aria-hidden="true"></span><span id="statusText">idle</span></div>
+<div id="text"></div>
+<div class="toolbar">
+  <div class="legend" id="legend">
+    <span class="l-cand">a token the model considered but did not pick. Click it to see what would have happened.</span>
+    <span class="l-other">everything else it considered</span>
+  </div>
+  <span class="spacer"></span>
+  <button id="collapse" title="Fold all runs except the selected one">fold runs</button>
+  <button id="expand" title="Unfold all runs">unfold</button>
+  <button id="view" aria-pressed="false">as a table</button>
+</div>
+<p id="hint" class="muted">Press Run. Each column will show the tokens the model weighed at that step: the tallest is the likeliest, the colored one is what it picked. Wide columns are where it hesitated.</p>
+<div id="chart"></div>
+<div id="tableWrap" class="hidden"></div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Data layer: llama-server client and step model. Pure functions first, DOM
+// wiring at the bottom. The pure part is also loaded by scripts/check.js
+// (headless verification), so it must not touch `document`.
+// ---------------------------------------------------------------------------
+const llpeek = (() => {
+  async function getJSON(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+    return r.json();
+  }
+  const health   = (base) => getJSON(`${base}/health`);
+  // Is a llama-server answering at base? Resolves within `ms` either way.
+  const reachable = async (base, ms = 1200) => {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+    try { const r = await fetch(`${base}/health`, { signal: ctl.signal }); return r.ok && (await r.json()).status === 'ok'; }
+    catch { return false; } finally { clearTimeout(t); }
+  };
+  const props    = (base) => getJSON(`${base}/props`);
+  const tokenize = (base, content) =>
+    getJSON(`${base}/tokenize`, { method: 'POST', body: JSON.stringify({ content, with_pieces: true }) })
+      .then((r) => r.tokens);
+  // Render chat messages through the model's chat template. kwargs reach the
+  // jinja template (e.g. { enable_thinking: false } for Qwen3 / SmolLM3).
+  const applyTemplate = (base, messages, kwargs = {}) =>
+    getJSON(`${base}/apply-template`, { method: 'POST', body: JSON.stringify({ messages, chat_template_kwargs: kwargs }) })
+      .then((r) => r.prompt);
+
+  // Async iterator over the `data:` JSON events of an SSE response body.
+  async function* sse(body) {
+    const reader = body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).replace(/\r$/, '');
+        buf = buf.slice(nl + 1);
+        if (line.startsWith('data: ')) yield JSON.parse(line.slice(6));
+      }
+    }
+  }
+
+  // Streaming /completion. Yields parsed server events; the last has stop:true.
+  async function* completion(base, body, signal) {
+    const r = await fetch(`${base}/completion`, {
+      method: 'POST', signal,
+      body: JSON.stringify({ ...body, stream: true }),
+    });
+    if (!r.ok) throw new Error(`/completion: HTTP ${r.status} ${await r.text()}`);
+    yield* sse(r.body);
+  }
+
+  // One entry of completion_probabilities -> Step. The server's top_logprobs is
+  // the raw top-K and can omit the sampled token; we add it so candidates always
+  // contains the chosen one. `rank` is 0-based position in the raw top-K, or -1.
+  function stepFrom(cp, index) {
+    const cand = cp.top_logprobs.map((t, rank) => ({
+      id: t.id, token: t.token, bytes: t.bytes, logprob: t.logprob, prob: Math.exp(t.logprob), rank,
+    }));
+    let rank = cand.findIndex((c) => c.id === cp.id);
+    if (rank < 0) {
+      cand.push({ id: cp.id, token: cp.token, bytes: cp.bytes, logprob: cp.logprob, prob: Math.exp(cp.logprob), rank: -1 });
+      cand.sort((a, b) => b.logprob - a.logprob);
+      rank = -1;
+    }
+    const topMass = cp.top_logprobs.reduce((s, t) => s + Math.exp(t.logprob), 0);
+    return {
+      index, id: cp.id, token: cp.token, bytes: cp.bytes,
+      logprob: cp.logprob, prob: Math.exp(cp.logprob), rank,
+      candidates: cand,
+      remainder: Math.max(0, 1 - topMass),   // mass outside the raw top-K
+      text: null,                             // filled by mergeText
+    };
+  }
+
+  // Byte pieces can split a multibyte character across steps. Assign each
+  // completed character sequence to the step that completes it; the steps that
+  // only contributed a prefix get text '' and partial:true.
+  function mergeText(steps) {
+    const strict = new TextDecoder('utf-8', { fatal: true });
+    let pending = [], owners = [];
+    for (const s of steps) {
+      pending = pending.concat(s.bytes);
+      owners.push(s);
+      try {
+        const t = strict.decode(new Uint8Array(pending));
+        for (const o of owners) { o.text = ''; o.partial = true; }
+        s.text = t; s.partial = false;
+        pending = []; owners = [];
+      } catch {
+        s.text = ''; s.partial = true;
+      }
+    }
+    // Trailing incomplete bytes: render lossy so nothing is silently dropped.
+    if (owners.length) owners[owners.length - 1].text = new TextDecoder().decode(new Uint8Array(pending));
+    return steps;
+  }
+
+  // One completion_probabilities entry from a post_sampling_probs request:
+  // what the sampler chain (top-k, top-p, min-p, temperature, ...) left, renormalized.
+  function postFrom(cp) {
+    return { id: cp.id, prob: cp.prob, top: cp.top_probs.map((t) => ({ id: t.id, token: t.token, prob: t.prob })) };
+  }
+
+  // ---- Engines: the same surface over llama-server (HTTP) and wllama (in-browser WASM).
+  //   info()                         -> string for the status line
+  //   tokenize(text) | null          -> [{id, piece}] (server only)
+  //   applyTemplate(messages, kw)    -> rendered prompt string
+  //   prefixPrompt(prompt, ids, text)-> prompt value that continues after fixed tokens
+  //   thinkBias()                    -> logit_bias forbidding <think>, or null
+  //   completion(body, signal)       -> async iterator of native-style events
+  //                                     ({completion_probabilities, stop} / {stop:true, stop_type, tokens_evaluated})
+  function serverEngine(base) {
+    return {
+      kind: 'server', base,
+      info: async () => { const h = await health(base), p = await props(base); return `${h.status}: ${p.model_path || '?'}  n_ctx=${p.default_generation_settings?.n_ctx ?? '?'}`; },
+      tokenize: (text) => tokenize(base, text),
+      applyTemplate: (messages, kwargs) => applyTemplate(base, messages, kwargs),
+      // llama-server accepts a mixed prompt [string, ...token ids]: exact continuation.
+      prefixPrompt: (prompt, ids) => ids.length ? [prompt, ...ids] : prompt,
+      thinkBias: async () => { const t = await tokenize(base, '<think>'); return t.length === 1 ? [[t[0].id, false]] : null; },
+      completion: (body, signal) => completion(base, body, signal),
+    };
+  }
+
+  const WLLAMA = 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.6.1/esm/';
+  const JINJA = 'https://cdn.jsdelivr.net/npm/@huggingface/jinja@0.5.10/dist/index.js';
+  // In-browser engine. Loads wllama and the jinja renderer from the CDN on demand,
+  // then the GGUF from `modelUrl` (any CORS-enabled URL, e.g. a Hugging Face resolve link).
+  // onProgress({loaded, total}) reports download bytes; onPhase(name) reports
+  // 'runtime' (fetching wllama), 'download', 'load' (into memory, no byte progress), 'ready'.
+  async function browserEngine(modelUrl, opts = {}, onProgress, onPhase = () => {}) {
+    onPhase('runtime');
+    const [{ Wllama }, { Template }] = await Promise.all([import(WLLAMA + 'index.js'), import(JINJA)]);
+    const w = new Wllama({ default: WLLAMA + 'wasm/wllama.wasm' }, { suppressNativeLog: true });
+    onPhase('download');
+    let loadPhase = false;
+    await w.loadModelFromUrl(modelUrl, { n_ctx: opts.n_ctx ?? 4096, progressCallback: (p) => {
+      if (onProgress) onProgress(p);
+      if (!loadPhase && p.total && p.loaded >= p.total) { loadPhase = true; onPhase('load'); }
+    } });
+    if (!loadPhase) onPhase('load');
+    onPhase('ready');
+    const tplSrc = w.getChatTemplate();
+    const tpl = tplSrc ? new Template(tplSrc) : null;
+    const name = modelUrl.split('/').pop();
+    return {
+      kind: 'browser', model: modelUrl,
+      info: async () => `browser: ${name}  threads=${w.getNumThreads()} n_ctx=${w.getLoadedContextInfo().n_ctx}${w.isSupportWebGPU() ? ' webgpu' : ''}`,
+      tokenize: null,
+      applyTemplate: async (messages, kwargs) => {
+        if (!tpl) throw new Error('this model has no chat template');
+        return tpl.render({ messages, add_generation_prompt: true, ...kwargs, bos_token: '', eos_token: '' });
+      },
+      // wllama only takes string prompts, so continue from the prefix's exact bytes as text.
+      prefixPrompt: (prompt, ids, text) => prompt + text,
+      thinkBias: async () => [['<think>', false]],
+      completion: async function* (body, signal) {
+        const { prompt, n_predict, ...rest } = body;
+        const it = await w.createCompletion({ ...rest, prompt, max_tokens: n_predict, stream: true, abortSignal: signal });
+        for await (const c of it) {
+          const ch = c.choices[0];
+          if (ch.logprobs?.content?.length) yield { stop: false, completion_probabilities: ch.logprobs.content };
+          if (ch.finish_reason) yield { stop: true, stop_type: ch.finish_reason === 'length' ? 'limit' : ch.finish_reason, tokens_evaluated: c.usage?.prompt_tokens, timings: c.timings };
+        }
+      },
+      unload: () => w.exit(),
+    };
+  }
+
+  // Full generation on an engine. Calls onStep(step, steps) as each token arrives.
+  // Returns { steps, final } where final is the stop:true event.
+  async function generate(engine, params, onStep, signal) {
+    const steps = [];
+    let final = null;
+    for await (const ev of engine.completion(params, signal)) {
+      if (ev.stop) { final = ev; break; }
+      for (const cp of ev.completion_probabilities || []) {
+        const step = stepFrom(cp, steps.length);
+        steps.push(step);
+        mergeText(steps);
+        if (onStep) onStep(step, steps);
+      }
+    }
+    return { steps, final };
+  }
+
+  return { health, reachable, props, tokenize, applyTemplate, completion, serverEngine, browserEngine, generate, stepFrom, postFrom, mergeText };
+})();
+
+if (typeof module !== 'undefined') module.exports = llpeek;
+</script>
+
+<script>
+// On hosts that cannot send COOP/COEP (GitHub Pages), coi-serviceworker.js
+// (next to this file) adds them so the in-browser engine can use threads.
+// No-op where the server already isolates the page (scripts/serve.ts) or where
+// service workers are unavailable (insecure origins; localhost counts as secure).
+if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('coi-serviceworker.js').then((reg) => {
+    if (!navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+      reg.update();
+    }
+  }).catch(() => {});
+}
+</script>
+<script>
+// ---------------------------------------------------------------------------
+// UI: Sankey-style candidate-mass trace with branching.
+// Every lane is a run: { n, prompt, params, start, prefix, parent, forkStep,
+// forced, steps[] }. Column x is the global step index (start + local index),
+// so lanes align. A branch is a run whose prompt is [prompt string, ...prefix
+// token ids]: the parent's tokens up to the fork plus the forced candidate.
+// Node height = probability; the column sums to 1 with the hatched tail. The
+// sampled node's ribbon fans into the full next column (the next distribution
+// is conditional on it). Candidates not taken end as fading stubs, unless a
+// branch was forked from them, in which case a ribbon leads to that lane.
+// ---------------------------------------------------------------------------
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const status = $('statusText'), chart = $('chart'), textEl = $('text'), tip = $('tip'), tableWrap = $('tableWrap'), legend = $('legend');
+  const NS = 'http://www.w3.org/2000/svg';
+  const MAX_RUNS = 8;                    // one categorical slot each; never cycled
+  const POST_W = 5, POST_DX = 8;         // sampler-view bar: width and offset left of the node
+  let ctrl = null, runs = [], selected = null;   // selected: { run, index }
+  let active = Promise.resolve();                // the generation in progress, awaited before preempting it
+  let browser = null;                            // loaded browser engine, if any
+  // Served by scripts/serve.ts? Only then can a llama-server exist next to the
+  // page. Published (GitHub Pages) or opened from disk: browser engine only.
+  const LOCAL = window.LLPEEK_LOCAL === true;
+  // Public GGUFs that load in a browser (CORS-enabled, under the 2 GB single-file limit).
+  const MODELS = [
+    ['Qwen3.5 2B Q8_0 (2.1 GB, same as the server default)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf'],
+    ['Qwen3.5 2B Q4_K_M (1.4 GB, faster download)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf'],
+    ['tiny test model: stories260K (1 MB)', 'https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf'],
+  ];
+  function currentEngine() {
+    if ($('engine').value === 'browser') {
+      if (!browser) throw new Error('Load a model first: pick one under "run on: this browser" and press "load model"');
+      return browser;
+    }
+    return llpeek.serverEngine($('base').value);
+  }
+
+  const setStatus = (t) => { status.textContent = t; };
+  const setBusy = (b) => document.body.classList.toggle('busy', b);
+  const rateText = (n, t0) => { const sec = (performance.now() - t0) / 1000; return `${n} token${n === 1 ? '' : 's'}${sec > 0.5 && n ? `, ${(n / sec).toFixed(1)} per second` : ''}`; };
+  const isChat = () => $('mode').value === 'chat';
+  const advanced = () => $('adv').getAttribute('aria-expanded') === 'true';
+  $('temperature').oninput = () => { $('tempOut').value = $('temperature').value; };
+  const params = () => ({
+    n_predict: +$('n_predict').value, n_probs: +$('n_probs').value,
+    temperature: +$('temperature').value, top_k: +$('top_k').value,
+    top_p: +$('top_p').value, min_p: +$('min_p').value, seed: +$('seed').value,
+  });
+  const vis = (t) => t.replace(/ /g, '·').replace(/\n/g, '↵').replace(/\t/g, '⇥');
+  const pct = (p) => p >= 0.1 ? `${(p * 100).toFixed(0)}%` : p >= 0.01 ? `${(p * 100).toFixed(1)}%` : `${(p * 100).toFixed(2)}%`;
+  const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const el = (name, attrs, parent) => {
+    const e = document.createElementNS(NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const color = (run) => `var(--s${run.n})`;
+  const soft = (run) => `color-mix(in srgb, var(--s${run.n}) 32%, transparent)`;
+  // Friendly lane name; the technical settings go in a tooltip (and in the label when advanced is open).
+  const settings = (run) => { const p = run.params; return `temperature ${p.temperature}, top_k ${p.top_k}, top_p ${p.top_p}, min_p ${p.min_p}, seed ${p.seed}, thinking ${p.think ? 'on' : 'off'}${p.logit_bias ? ', <think> blocked' : ''}`; };
+  const label = (run) => {
+    const base = advanced() ? `Run ${run.n} \u00b7 ${settings(run)}` : `Run ${run.n} \u00b7 randomness ${run.params.temperature}`;
+    return run.parent ? `${base} \u00b7 from run ${run.parent.n} at step ${run.forkStep}, choosing ${JSON.stringify(run.forced.token)}` : base;
+  };
+  const isSel = (run, i) => selected && selected.run === run && selected.index === i;
+
+  // Geometry
+  // Lane header band (TOP): lane label at y=12, the output line (sampled tokens
+  // aligned with their columns, quiet whitespace omitted) at top-24, step
+  // numbers at top-8, then the columns.
+  const H = 260, TOP = 54, BOTTOM = 10, LANE = TOP + H + BOTTOM, NODE_W = 12, GAP = 2, STUB = 34, LABEL_MIN = 9;
+  // Column width encodes hesitation. A column is "closed" when the top candidate
+  // holds at least CLOSED_P: it gets just enough room for the sampled token's
+  // label, so confident stretches read like text. Otherwise it opens to fit the
+  // candidate labels (OPEN_MIN..OPEN_MAX px). Widths are per global step, the max
+  // over lanes, so lanes stay aligned; they tween like lane heights do.
+  const CLOSED_P = 0.85, CLOSED_MIN = 26, OPEN_MIN = 72, OPEN_MAX = 150, PAD = 10, X0 = 16;
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  const textW = (t, bold) => { measureCtx.font = `${bold ? '600 ' : ''}11px system-ui, -apple-system, "Segoe UI", sans-serif`; return measureCtx.measureText(t).width; };
+  // Share of the step's mass held by whitespace-only candidates. When it is at
+  // least CLOSED_P the model was only choosing between newline variants, which
+  // is formatting, not a decision.
+  const wsMass = (step) => step.candidates.reduce((a, c) => a + (/^\s+$/.test(c.token) ? c.prob : 0), 0);
+  const isOpen = (step) => (step.candidates[0]?.prob ?? 0) < CLOSED_P && wsMass(step) < CLOSED_P;
+  // Quiet: a closed column whose token is only whitespace, punctuation or
+  // symbols (newline, parenthesis, comma, quote, markdown stars), or one whose
+  // options were almost all whitespace. Punctuation of the trace, not a decision.
+  const isQuiet = (step) => !isOpen(step) && (/^[\s\p{P}\p{S}]+$/u.test(step.token) || wsMass(step) >= CLOSED_P);
+  // Text for the output line: quiet whitespace collapses to nothing, a leading
+  // space is dropped (the column gap separates tokens), other whitespace is visible.
+  const pieceText = (step) => step.text ?? step.token;
+  const lineText = (step) => (isQuiet(step) && /^\s+$/.test(step.token)) ? '' : vis(pieceText(step).replace(/^ +/, ''));
+  // Sub-word pieces ("K", "amp", "ala") are one word: a token that starts with a
+  // letter or digit continues a previous token that ends with one. Words are drawn
+  // as one text run starting at the first piece's column.
+  const wordy = /[\p{L}\p{N}]/u, joiner = /[\p{L}\p{N}\-'\u2019]/u;
+  const continues = (prev, step) => {
+    if (!prev || /^\s/.test(step.token)) return false;
+    const a = pieceText(prev).slice(-1), b = pieceText(step)[0] ?? '';
+    return joiner.test(a) && joiner.test(b) && (wordy.test(a) || wordy.test(b));   // letters, or a hyphen/apostrophe next to a letter
+  };
+  function groupWords(steps) {
+    const groups = [];
+    steps.forEach((step, i) => {
+      if (i > 0 && continues(steps[i - 1], step)) groups[groups.length - 1].push(i);
+      else groups.push([i]);
+    });
+    return groups;
+  }
+  // Draw the output line for a lane: one <text> per word, one <tspan> per piece
+  // (each hoverable/clickable like its node).
+  function drawLine(run, lane, xs, y, opacity) {
+    for (const idx of groupWords(run.steps)) {
+      const first = run.steps[idx[0]], g0 = run.start + idx[0];
+      if (idx.length === 1 && !lineText(first)) continue;
+      const q = idx.length === 1 && isQuiet(first);
+      const t = el('text', { x: xs[g0], y, class: 'line' + (q ? ' quiet' : ''), opacity }, lane);
+      idx.forEach((i, k) => {
+        const step = run.steps[i], g = run.start + i;
+        const span = el('tspan', {}, t);
+        span.textContent = k === 0 ? lineText(step) : vis(pieceText(step));
+        span._info = { run, step, row: { id: step.id, token: step.token, bytes: step.bytes, prob: step.prob, logprob: step.logprob, rank: step.rank, kind: 'chosen' }, g, child: null };
+      });
+    }
+  }
+  function stepWidth(step) {
+    if (isQuiet(step)) return CLOSED_MIN;
+    if (!isOpen(step)) return Math.max(CLOSED_MIN, NODE_W + 6 + textW(vis(step.token), true) + PAD);
+    const rows = layout(step);
+    let w = 0;
+    for (const r of rows) {
+      if (!(r.kind === 'chosen' || r.h >= LABEL_MIN)) continue;
+      const t = r.kind === 'other' ? `other ${pct(r.prob)}` : `${vis(r.token)} ${pct(r.prob)}`;
+      w = Math.max(w, textW(t, r.kind === 'chosen'));
+    }
+    return Math.min(OPEN_MAX, Math.max(OPEN_MIN, NODE_W + 6 + w + PAD));
+  }
+  let colCur = [], colTarget = [];
+  function layoutColumns() {
+    colTarget = [];
+    for (const run of runs) {
+      run.steps.forEach((step, i) => {
+        const g = run.start + i;
+        colTarget[g] = Math.max(colTarget[g] ?? 0, stepWidth(step));
+      });
+      if (run.generating) { const g = run.start + run.steps.length; colTarget[g] = Math.max(colTarget[g] ?? 0, 40); }
+    }
+    while (colCur.length < colTarget.length) colCur.push(0);
+    colCur.length = colTarget.length;
+  }
+  const colW = (g) => colCur[g] ?? 0;
+  const colX = (g) => { let x = X0; for (let i = 0; i < g; i++) x += colCur[i] ?? 0; return x; };
+  const MINI = 30, MINI_TOP = 18, MINI_H = 8;   // collapsed lane: label + a strip of sampled tokens
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Lanes tween their height between LANE and MINI (and from 0 when they appear).
+  // f in [0,1] is how expanded the lane is; columns scale with it. Every frame
+  // re-renders the whole SVG, so ribbons and the fork links follow along.
+  let animating = false;
+  function laneTarget(run) { return run.collapsed ? MINI : LANE; }
+  function laneGeom(run) {
+    const f = Math.max(0, Math.min(1, (run.laneH - MINI) / (LANE - MINI)));
+    return { f, top: MINI_TOP + (TOP - MINI_TOP) * f, colH: Math.max(MINI_H, H * f) };
+  }
+  function animate() {
+    if (animating) return;
+    animating = true;
+    render();
+    const tick = () => {
+      let moving = false;
+      for (const r of runs) {
+        const t = laneTarget(r), d = t - r.laneH;
+        if (Math.abs(d) < 0.5 || reduceMotion) r.laneH = t;
+        else { r.laneH += d * 0.22; moving = true; }
+      }
+      for (let g = 0; g < colTarget.length; g++) {
+        const d = colTarget[g] - colCur[g];
+        if (Math.abs(d) < 0.5 || reduceMotion) colCur[g] = colTarget[g];
+        else { colCur[g] += d * 0.22; moving = true; }
+      }
+      render();
+      if (moving) requestAnimationFrame(tick); else animating = false;
+    };
+    requestAnimationFrame(tick);
+  }
+  function setCollapsed(run, v) { if (run.collapsed !== v) { run.collapsed = v; animate(); } }
+
+  function layout(step) {
+    const rows = step.candidates.map((c) => ({ ...c, kind: c.id === step.id ? 'chosen' : 'cand' }));
+    rows.push({ kind: 'other', prob: step.remainder, token: 'other' });
+    const total = rows.reduce((a, r) => a + r.prob, 0) || 1;
+    let y = TOP;
+    for (const r of rows) { r.y0 = y; r.h = (r.prob / total) * H; r.y1 = y + r.h; y = r.y1; }
+    return rows;
+  }
+  const ribbon = (x0, a0, a1, x1, b0, b1) => {
+    const c = (x1 - x0) / 2;
+    return `M${x0},${a0} C${x0 + c},${a0} ${x1 - c},${b0} ${x1},${b0} L${x1},${b1} C${x1 - c},${b1} ${x0 + c},${a1} ${x0},${a1} Z`;
+  };
+
+  function render() {
+    chart.replaceChildren();
+    if (!runs.length) return;
+    const offs = []; let acc = 0;
+    for (const r of runs) { offs.push(acc); acc += r.laneH; }
+    const xs = [X0]; for (const w of colCur) xs.push(xs[xs.length - 1] + w);
+    const W = xs[xs.length - 1] + 8, HT = Math.max(acc, 1);
+    const svg = el('svg', { width: W, height: HT, viewBox: `0 0 ${W} ${HT}`, role: 'img',
+      'aria-label': `Candidate mass per generated token, ${runs.length} run(s), ${colCur.length} steps` });
+    const defs = el('defs', {}, svg);
+    const pat = el('pattern', { id: 'hatch', width: 5, height: 5, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, defs);
+    el('rect', { width: 5, height: 5, fill: 'var(--other)' }, pat);
+    el('rect', { width: 1, height: 5, fill: 'var(--other-ink)' }, pat);
+    const fade = (id, c, o0) => {
+      const g = el('linearGradient', { id, x1: 0, x2: 1, y1: 0, y2: 0 }, defs);
+      el('stop', { offset: 0, 'stop-color': c, 'stop-opacity': o0 }, g);
+      el('stop', { offset: 1, 'stop-color': c, 'stop-opacity': 0 }, g);
+    };
+    fade('fadeCand', 'var(--cand-soft)', 1); fade('fadeOther', 'var(--other-ink)', 0.25);
+    runs.forEach((r) => fade(`fade${r.n}`, `var(--s${r.n})`, 0.32));
+    const links = el('g', {}, svg), nodes = el('g', {}, svg);
+
+    runs.forEach((run, li) => {
+      const yOff = offs[li], { f, top, colH } = laneGeom(run);
+      if (run.laneH < 4) return;
+      const lane = el('g', { transform: `translate(0,${yOff})` }, nodes);
+      const t = el('text', { x: colX(run.start), y: 12, class: 'lane' }, lane);
+      t.textContent = `${run.collapsed ? '\u25b8' : '\u25be'} ${label(run)}`;
+      t._lane = run;
+      el('title', {}, t).textContent = `${settings(run)}. Click to ${run.collapsed ? 'unfold' : 'fold'}.`;
+      if (f === 0) {
+        // collapsed: one small cell per sampled token, opacity by probability
+        run.steps.forEach((step, i) => {
+          const x = xs[run.start + i];
+          const rect = el('rect', { x, y: MINI_TOP, width: NODE_W, height: MINI_H, rx: 2, fill: color(run), 'fill-opacity': isQuiet(step) ? 0.2 : 0.25 + 0.75 * step.prob, class: 'node mini' }, lane);
+          rect._info = { run, step, row: { ...step, kind: 'chosen' }, g: run.start + i, child: null };
+        });
+        drawLine(run, lane, xs.map((x) => x + NODE_W + 4), MINI_TOP + MINI_H, 1);
+        return;
+      }
+      const showText = f > 0.55, tOpacity = Math.max(0, (f - 0.55) / 0.45);
+      if (showText) drawLine(run, lane, xs, top - 24, tOpacity);
+      if (run.generating) {
+        // where the next token will land: a pulsing outline, fed by the last node's ribbon
+        const g = run.start + run.steps.length, x = xs[g];
+        if (x != null) {
+          el('rect', { x, y: top, width: NODE_W, height: colH, rx: 2, class: 'next', style: `--c:${color(run)}` }, lane);
+          const last = run.steps[run.steps.length - 1];
+          if (last) {
+            const rows = layout(last), r = rows.find((r) => r.kind === 'chosen');
+            const y0 = top + (r.y0 - TOP) * f, y1 = top + (r.y1 - TOP) * f;
+            el('path', { d: ribbon(xs[g - 1] + NODE_W, yOff + y0, yOff + y1, x, yOff + top, yOff + top + colH), fill: soft(run), class: 'next' }, links);
+          }
+        }
+      }
+      run.steps.forEach((step, i) => {
+        const g = run.start + i, x = xs[g], w = colCur[g], open = isOpen(step), quiet = isQuiet(step), rows = layout(step);
+        const xNext = xs[g + 1], stub = Math.min(STUB, Math.max(6, w - NODE_W - 4));
+        for (const r of rows) { r.y0 = top + (r.y0 - TOP) * f; r.y1 = top + (r.y1 - TOP) * f; r.h *= f; }
+        const col = el('g', { class: 'col' + (isSel(run, i) ? ' sel' : ''), opacity: 1 }, lane);
+        if (showText && (open || g % 5 === 0) && w >= 22) el('text', { x, y: top - 8, class: 'idx', opacity: tOpacity }, col).textContent = g;
+
+        if ($('post').checked && step.post) {
+          // sampler distribution as a thin bar left of the node column, same order, renormalized
+          let py = top;
+          for (const t of step.post.top) {
+            const ph = t.prob * colH, hh = Math.max(0, ph - GAP * f);
+            const r = el('rect', { x: x - POST_DX, y: py, width: POST_W, height: hh, rx: 1, class: 'post',
+              fill: color(run), 'fill-opacity': t.id === step.id ? 1 : 0.45 }, col);
+            r._info = { run, step, row: { id: t.id, token: t.token, prob: t.prob, kind: 'post' }, g, child: null };
+            py += ph;
+          }
+        }
+        for (const r of rows) {
+          const h = Math.max(0, r.h - GAP * f);
+          const child = r.kind === 'cand' && runs.find((b) => b.parent === run && b.forkStep === g && b.forced.id === r.id);
+          if (r.kind === 'chosen' && i + 1 < run.steps.length) {
+            el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, xNext, yOff + top, yOff + top + colH), fill: soft(run), 'fill-opacity': quiet ? 0.45 : 1 }, links);
+          } else if (child) {
+            const ci = runs.indexOf(child), cg = laneGeom(child), cy = offs[ci];
+            const [b0, b1] = cg.f === 0 ? [cy + MINI_TOP, cy + MINI_TOP + MINI_H] : [cy + cg.top, cy + cg.top + cg.colH];
+            el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, xNext, b0, b1), fill: soft(child) }, links);
+          } else if (r.h > 0.5) {
+            const grad = r.kind === 'chosen' ? `fade${run.n}` : r.kind === 'cand' ? 'fadeCand' : 'fadeOther';
+            el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, x + NODE_W + stub, yOff + r.y0, yOff + r.y1), fill: `url(#${grad})` }, links);
+          }
+          const fill = r.kind === 'chosen' ? color(run) : child ? color(child) : r.kind === 'cand' ? 'var(--cand)' : 'url(#hatch)';
+          const rect = el('rect', { x, y: r.y0, width: NODE_W, height: h, rx: 2, fill, class: 'node ' + r.kind + (quiet ? ' quiet' : '') }, col);
+          rect._info = { run, step, row: r, g, child };
+          // closed column: only the sampled token, without a percentage (the node says it)
+          // Node labels only in open columns; closed columns are read from the output line.
+          if (showText && open && (r.kind === 'chosen' || child || r.h >= LABEL_MIN)) {
+            const tx = el('text', { x: x + NODE_W + 4, y: r.y0 + r.h / 2 + 4, class: r.kind, opacity: tOpacity }, col);
+            tx.textContent = r.kind === 'other' ? `other ${pct(r.prob)}` : `${vis(r.token)} ${pct(r.prob)}`;
+          }
+          if (r.h < 12) {
+            const hit = el('rect', { x: x - 4, y: r.y0 - 3, width: NODE_W + 8, height: r.h + 6, class: 'hit' }, col);
+            hit._info = rect._info;
+          }
+        }
+      });
+    });
+    chart.appendChild(svg);
+  }
+
+  function renderText() {
+    textEl.replaceChildren();
+    for (const run of runs) {
+      const row = document.createElement('div'); row.className = 'row';
+      const sw = document.createElement('span'); sw.className = 'sw'; sw.style.setProperty('--c', color(run)); row.appendChild(sw);
+      const body = document.createElement('span'); row.appendChild(body);
+      const p = document.createElement('span'); p.className = 'p'; p.textContent = run.prompt; body.appendChild(p);
+      if (run.prefixText) { const f = document.createElement('span'); f.className = 'f'; f.textContent = run.prefixText; body.appendChild(f); }
+      run.steps.forEach((s, i) => {
+        const t = document.createElement('span'); t.textContent = s.text;
+        t.className = 't' + (isSel(run, i) ? ' sel' : '');
+        t._info = { run, step: s, row: { ...s, kind: 'chosen' }, g: run.start + i, child: null };
+        body.appendChild(t);
+      });
+      if (run.generating) { const c = document.createElement('span'); c.className = 'caret'; c.style.setProperty('--c', color(run)); body.appendChild(c); }
+      textEl.appendChild(row);
+    }
+  }
+
+  function renderLegend() {
+    for (const e of legend.querySelectorAll('.l-run, .l-post')) e.remove();
+    if ($('post').checked) {
+      const e = document.createElement('span'); e.className = 'l-post';
+      e.textContent = 'thin bar: what the sampler was allowed to pick from, after its filters';
+      legend.appendChild(e);
+    }
+    for (const run of runs) {
+      const e = document.createElement('span'); e.className = 'l-run' + (selected?.run === run ? ' sel' : '');
+      e.style.setProperty('--c', color(run)); e.textContent = label(run); e.title = settings(run);
+      e.onclick = () => { selected = selected?.run === run && selected.index < 0 ? null : { run, index: -1 }; setCollapsed(run, false); renderAll(); };
+      legend.appendChild(e);
+    }
+  }
+
+  function renderTable() {
+    const adv = advanced();
+    const rows = runs.flatMap((run) => run.steps.map((s, i) => `<tr class="${isSel(run, i) ? 'sel' : ''}" data-run="${run.n}" data-i="${i}">
+      <td class="n">${run.n}</td><td class="n">${run.start + i}</td><td>${esc(JSON.stringify(s.text))}</td><td class="n">${pct(s.prob)}</td>
+      <td class="n">${s.rank < 0 ? 'beyond' : s.rank + 1}</td><td class="n">${pct(s.remainder)}</td>
+      ${adv ? `<td class="n">${s.logprob.toFixed(3)}</td><td class="n">${s.post ? pct(s.post.prob) + ' / ' + s.post.top.length : ''}</td>` : ''}
+      <td>${s.candidates.map((c) => `${esc(vis(c.token))} ${pct(c.prob)}`).join(', ')}</td></tr>`)).join('');
+    tableWrap.innerHTML = `<table><thead><tr><th>run</th><th>step</th><th>token</th><th>chance</th><th>pick #</th><th>everything else</th>${adv ? '<th>logprob</th><th>after sampler / left</th>' : ''}<th>tokens considered</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function renderAll() {
+    $('hint').classList.toggle('hidden', runs.length > 0);
+    renderText(); renderLegend(); layoutColumns(); animate(); if (!animating) render();
+    if (!tableWrap.classList.contains('hidden')) renderTable();
+  }
+
+  // Tooltip + selection + branching
+  function showTip(e, info) {
+    if (!info) { tip.style.display = 'none'; return; }
+    const { run, step, row, g, child } = info;
+    const cum = run.steps.slice(0, step.index + 1).reduce((a, s) => a + s.logprob, 0);
+    const adv = advanced();
+    const postLine = (id) => {
+      if (!$('post').checked || !step.post) return '';
+      const t = step.post.top.find((c) => c.id === id);
+      return `<br><span class="m">after the sampler's filters: ${t ? pct(t.prob) : 'filtered out'}</span>`;
+    };
+    const tech = (r) => adv ? ` <span class="m">id ${r.id}, logprob ${r.logprob.toFixed(3)}</span>` : '';
+    const rankWord = (rk) => rk === 0 ? 'its top pick' : rk < 0 ? 'outside the candidates shown' : `its number ${rk + 1} pick`;
+    if (row.kind === 'post') {
+      tip.innerHTML = `<b>${esc(JSON.stringify(row.token))}</b><br>${pct(row.prob)} chance after the sampler's filters` +
+        ` <span class="m">(${step.post.top.length} token${step.post.top.length === 1 ? '' : 's'} left at step ${g})</span>`;
+      tip.style.display = 'block';
+      tip.style.left = `${Math.min(e.clientX + 12, window.innerWidth - 340)}px`; tip.style.top = `${e.clientY + 12}px`;
+      return;
+    }
+    tip.innerHTML = row.kind === 'other'
+      ? `<b>step ${g}</b><br>${pct(row.prob)} spread over everything beyond the ${step.candidates.length} tokens shown`
+      : `<b>${esc(JSON.stringify(row.token))}</b>${tech(row)}<br>` +
+        `the model gave this a <b>${pct(row.prob)}</b> chance<br>` +
+        (row.kind === 'chosen'
+          ? `<span class="m">picked at step ${g} in run ${run.n}, ${rankWord(step.rank)}${adv ? `; path logprob ${cum.toFixed(2)}` : ''}</span>`
+          : child ? `<span class="m">step ${g}, ${rankWord(row.rank)}; explored as run ${child.n}</span>`
+                  : `<span class="m">step ${g}, ${rankWord(row.rank)}, not picked. Click to see what would have followed.</span>`) +
+        postLine(row.id);
+    tip.style.display = 'block';
+    tip.style.left = `${Math.min(e.clientX + 12, window.innerWidth - 340)}px`;
+    tip.style.top = `${e.clientY + 12}px`;
+  }
+  chart.addEventListener('mousemove', (e) => showTip(e, e.target._info));
+  chart.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  textEl.addEventListener('mousemove', (e) => showTip(e, e.target._info));
+  textEl.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  textEl.addEventListener('click', (e) => {
+    const info = e.target._info; if (!info) return;
+    selected = isSel(info.run, info.step.index) ? null : { run: info.run, index: info.step.index };
+    setCollapsed(info.run, false);
+    renderAll();
+    chart.scrollTo({ left: colX(info.g) - chart.clientWidth / 2, behavior: reduceMotion ? 'auto' : 'smooth' });
+  });
+  chart.addEventListener('click', (e) => {
+    if (e.target._lane) { setCollapsed(e.target._lane, !e.target._lane.collapsed); return; }
+    const info = e.target._info; if (!info) return;
+    const { run, step, row, g, child } = info;
+    if (run.collapsed) { setCollapsed(run, false); return; }
+    if (row.kind === 'post') return;
+    if (row.kind === 'cand' && !child) { branch(run, g, row); return; }
+    if (row.kind === 'cand' && child) { selected = { run: child, index: -1 }; renderAll(); return; }
+    selected = isSel(run, step.index) ? null : { run, index: step.index };
+    renderAll();
+  });
+  tableWrap.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-i]'); if (!tr) return;
+    selected = { run: runs.find((r) => r.n === +tr.dataset.run), index: +tr.dataset.i }; renderAll();
+  });
+  $('collapse').onclick = () => { const keep = selected?.run ?? runs[runs.length - 1]; runs.forEach((r) => setCollapsed(r, r !== keep)); };
+  $('expand').onclick = () => runs.forEach((r) => setCollapsed(r, false));
+  $('view').onclick = () => {
+    const show = tableWrap.classList.toggle('hidden') === false;
+    $('view').setAttribute('aria-pressed', show);
+    chart.classList.toggle('hidden', show);
+    if (show) renderTable();
+  };
+  $('check').onclick = async () => {
+    try { setStatus(await currentEngine().info()); } catch (e) { setStatus(`error: ${e.message}`); }
+  };
+
+  // ---- browser engine UI: curated public models, or any CORS-enabled GGUF URL
+  function fillModels() {
+    const sel = $('model'); sel.replaceChildren();
+    for (const [label, url] of MODELS) {
+      const o = document.createElement('option'); o.value = url; o.textContent = label; sel.appendChild(o);
+    }
+    const u = document.createElement('option'); u.value = 'url'; u.textContent = 'URL...'; sel.appendChild(u);
+    sel.value = MODELS[0][1];
+    sel.onchange();
+  }
+  $('model').onchange = () => { $('modelUrlLabel').classList.toggle('hidden', $('model').value !== 'url'); };
+  $('engine').onchange = () => {
+    const b = $('engine').value === 'browser';
+    $('browserRow').classList.toggle('hidden', !b);
+    if (b && !$('model').options.length) fillModels();
+  };
+  async function loadModel() {
+    if (ctrl) return;
+    const url = $('model').value === 'url' ? $('modelUrl').value.trim() : $('model').value;
+    if (!url) { setStatus('Enter a model URL'); return; }
+    if (browser) { try { await browser.unload(); } catch { /* ignore */ } browser = null; }
+    $('load').disabled = true; setBusy(true);
+    const bar = $('loadBar'), text = $('loadText');
+    const show = (t, value) => {
+      $('loadInfo').classList.remove('hidden'); text.textContent = t;
+      if (value == null) bar.removeAttribute('value'); else bar.value = value;   // no value = indeterminate
+    };
+    const fmtS = (sec) => sec < 60 ? `${Math.round(sec)} s` : `${Math.floor(sec / 60)} min ${Math.round(sec % 60)} s`;
+    try {
+      const t0 = performance.now();
+      let tLast = t0, bLast = 0, rate = 0;                        // smoothed download rate
+      browser = await llpeek.browserEngine(url, {}, ({ loaded, total }) => {
+        const now = performance.now(), dt = (now - tLast) / 1000;
+        if (dt >= 0.5) {
+          const inst = (loaded - bLast) / dt;
+          rate = rate ? 0.7 * rate + 0.3 * inst : inst; tLast = now; bLast = loaded;
+        }
+        const mb = (n) => (n / 1e6).toFixed(0);
+        if (!total) { show(`downloading ${mb(loaded)} MB`, null); return; }
+        const pctDone = Math.min(100, 100 * loaded / total);
+        const left = rate > 0 ? ` \u00b7 ${fmtS((total - loaded) / rate)} left` : '';
+        show(`downloading ${mb(loaded)} / ${mb(total)} MB \u00b7 ${pctDone.toFixed(0)}%${rate ? ` \u00b7 ${(rate / 1e6).toFixed(0)} MB/s` : ''}${left}`, pctDone);
+      }, (phase) => {
+        if (phase === 'runtime') show('fetching the in-browser runtime\u2026', null);
+        else if (phase === 'download') show('starting download (cached models skip this)\u2026', 0);
+        else if (phase === 'load') show('loading the model into memory\u2026', null);
+        else if (phase === 'ready') show(`loaded in ${fmtS((performance.now() - t0) / 1000)}`, 100);
+      });
+      show(`loaded ${url.split('/').pop()} in ${fmtS((performance.now() - t0) / 1000)}`, 100);
+      setStatus(await browser.info());
+    } catch (e) {
+      $('loadInfo').classList.add('hidden'); setStatus(`error: ${e.message}`);
+    } finally { $('load').disabled = false; setBusy(false); }
+    return browser;
+  }
+  $('load').onclick = loadModel;
+
+  // Engine detection (local serving only): probe the configured llama-server at
+  // startup and whenever its URL changes. If nothing answers, switch to the
+  // browser engine and say so; the server option stays one click away. Skipped
+  // when the query string names an engine or auto-runs. A manual choice is
+  // never revisited: detection runs only at startup and on URL edits.
+  let detectSeq = 0;
+  async function detectEngine(reason) {
+    const seq = ++detectSeq, base = $('base').value;
+    setStatus(`looking for a llama-server at ${base}\u2026`);
+    const ok = await llpeek.reachable(base);
+    if (seq !== detectSeq || ctrl) return;
+    if (ok) {
+      $('engine').value = 'server'; $('engine').onchange();
+      try { setStatus(`using the llama-server at ${base}: ${(await llpeek.props(base)).model_path?.split('/').pop() ?? 'model loaded'}`); }
+      catch { setStatus(`using the llama-server at ${base}`); }
+    } else {
+      $('engine').value = 'browser'; $('engine').onchange();
+      setStatus(reason === 'url'
+        ? `no llama-server answered at ${base}; switched to running in this browser`
+        : `no llama-server answered at ${base}, so this will run in your browser: pick a model and press "load model" (or start llama-server and set "run on")`);
+    }
+  }
+  $('base').addEventListener('change', () => detectEngine('url'));
+  if (!LOCAL) {
+    // Browser engine only: drop the server option and its controls.
+    $('engine').querySelector('option[value="server"]').remove();
+    $('engine').value = 'browser'; $('engine').onchange();
+    $('engine').closest('label').classList.add('hidden');
+    $('base').closest('label').classList.add('hidden');
+    $('check').classList.add('hidden');
+  }
+
+  // Insert a run after its parent's subtree so lanes read depth-first.
+  function insertRun(run) {
+    if (!run.parent) { runs.push(run); return; }
+    const isDesc = (r) => { for (let p = r.parent; p; p = p.parent) if (p === run.parent) return true; return false; };
+    let i = runs.indexOf(run.parent) + 1;
+    while (i < runs.length && isDesc(runs[i])) i++;
+    runs.splice(i, 0, run);
+  }
+
+  async function startRun(run) {
+    if (ctrl) return;
+    if (runs.length >= MAX_RUNS) { setStatus(`At most ${MAX_RUNS} runs at once. Press Run to start over.`); return; }
+    let engine;
+    try { engine = run.engine || currentEngine(); } catch (e) { setStatus(e.message); return; }
+    run.engine = engine; run.generating = true;
+    insertRun(run);
+    // Keep the new lane and its parent open; fold everything else so a
+    // branch never pushes its origin off screen.
+    if (run.parent) runs.forEach((r) => setCollapsed(r, r !== run && r !== run.parent));
+    animate();
+    ctrl = new AbortController(); setBusy(true);
+    try {
+      $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+      if (!run.parent) {
+        run.prompt = await preparePrompt(engine);
+        const bias = await thinkBias(engine);
+        if (bias) run.params.logit_bias = bias;
+        run.params.think = $('think').checked;
+        const n = engine.tokenize ? (await engine.tokenize(run.prompt)).length : null;
+        setStatus(`Run ${run.n}: reading your prompt${n != null ? ` (${n} tokens)` : ''}${isChat() ? `, as an assistant${$('think').checked ? ', thinking first' : ''}` : ''}\u2026`);
+      } else setStatus(`Run ${run.n}: reading the text up to ${JSON.stringify(run.forced.token)} at step ${run.forkStep}\u2026`);
+      const t0 = performance.now();
+      let pending = false;
+      const { think, ...sampling } = run.params;
+      const body = { ...sampling, prompt: engine.prefixPrompt(run.prompt, run.prefix, run.prefixText) };
+      const { steps, final } = await llpeek.generate(engine, body, (s, all) => {
+        run.steps = all;
+        setStatus(`Run ${run.n}: generating, ${rateText(all.length, t0)}`);
+        if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; renderAll(); if (!run.parent) chart.scrollLeft = chart.scrollWidth; }); }
+      }, ctrl.signal);
+      run.generating = false;
+      run.steps = steps; run.final = final; run.segments = [steps.length]; renderAll();
+      checkPrefix(run, final);
+      const sec = (performance.now() - t0) / 1000;
+      const cum = steps.reduce((a, s) => a + s.logprob, 0);
+      const why = final?.stop_type === 'limit' || steps.length >= run.params.n_predict ? 'reached the length limit'
+        : final?.stop_type ? 'the model chose to stop' : 'the stream ended early';
+      const mean = pct(Math.exp(cum / Math.max(1, steps.length)));
+      setStatus(`Run ${run.n} done: ${steps.length} tokens in ${sec.toFixed(1)} s, ${why}. On average the model was ${mean} sure of each token it picked.` +
+        (advanced() ? ` [${(steps.length / sec).toFixed(1)} tok/s, path logprob ${cum.toFixed(2)}, stop_type ${final?.stop_type}]` : ''));
+    } catch (e) {
+      setStatus(e.name === 'AbortError' ? `Run ${run.n} stopped after ${run.steps.length} tokens` : `error: ${e.message}`);
+      if (run.steps.length && !run.segments.length) run.segments = [run.steps.length];
+      run.generating = false; renderAll();
+    } finally {
+      run.generating = false;
+      $('run').disabled = $('add').disabled = false; $('stop').disabled = true; ctrl = null; setBusy(false);
+    }
+    await ensurePost();
+  }
+  // Engines that continue from text (browser) may re-tokenize a prefix differently.
+  // The root run records its prompt length; later runs compare the engine's count.
+  const rootOf = (run) => { while (run.parent) run = run.parent; return run; };
+  function checkPrefix(run, final) {
+    if (final?.tokens_evaluated == null) return;
+    if (!run.parent && !run.prefix.length) { run.promptTokens = final.tokens_evaluated; return; }
+    const root = rootOf(run), expected = root.promptTokens + run.prefix.length;
+    if (root.promptTokens != null && final.tokens_evaluated !== expected) {
+      setStatus(`Note: run ${run.n} re-read its starting text as ${final.tokens_evaluated} tokens instead of ${expected}, so it may not continue exactly where the original left off`);
+    }
+  }
+  const nextN = () => (runs.length ? Math.max(...runs.map((r) => r.n)) : 0) + 1;
+
+  // Raw mode sends the textarea verbatim. Chat mode renders it as one user
+  // message through the model's chat template, with thinking on or off; the
+  // rendered string (special tokens included) becomes run.prompt.
+  async function preparePrompt(engine) {
+    const text = $('prompt').value;
+    if (!isChat()) return text;
+    return engine.applyTemplate([{ role: 'user', content: text }], { enable_thinking: $('think').checked });
+  }
+  // Thinking-trained models (Qwen3.5) open a <think> block on their own even in
+  // raw mode. With thinking off we forbid that token via logit_bias. n_probs still
+  // reports the model's raw belief, so the blocked candidate stays visible.
+  const thinkBias = (engine) => ($('think').checked ? null : engine.thinkBias());
+  function newRun() {
+    return { n: nextN(), prompt: $('prompt').value, params: params(), start: 0, prefix: [], prefixText: '', parent: null, forkStep: -1, forced: null, steps: [], final: null, laneH: 0, collapsed: false, segments: [] };
+  }
+  // Thinking is a chat-template feature: turning it on switches to assistant
+  // mode; switching to "continue my text" turns thinking off. Both default off.
+  $('think').onchange = () => { if ($('think').checked) $('mode').value = 'chat'; };
+  $('mode').onchange = () => { if (!isChat()) $('think').checked = false; };
+  $('adv').onclick = () => {
+    const open = $('advanced').classList.toggle('hidden') === false;
+    $('adv').setAttribute('aria-expanded', open);
+    $('adv').innerHTML = open ? 'advanced &#9662;' : 'advanced &#9656;';
+    renderAll();
+  };
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!$('run').disabled) $('run').click(); }
+    else if (e.key === 'Escape' && ctrl) { e.preventDefault(); $('stop').click(); }
+  });
+  // Fork `parent` at global step g, forcing candidate `cand` instead of what was sampled.
+  function branch(parent, g, cand) {
+    const k = g - parent.start;                       // local index of the fork step
+    const kept = parent.steps.slice(0, k);
+    // A branch inherits the parent's params verbatim: same sampling, same seed,
+    // and the same logit_bias / think flag, which are only computed for root runs.
+    const run = {
+      ...newRun(), prompt: parent.prompt, params: { ...parent.params }, parent, forkStep: g, forced: { id: cand.id, token: cand.token, prob: cand.prob },
+      start: g + 1,
+      prefix: [...parent.prefix, ...kept.map((s) => s.id), cand.id],
+      prefixText: parent.prefixText + new TextDecoder().decode(new Uint8Array([...kept.flatMap((s) => s.bytes), ...cand.bytes])),
+      engine: parent.engine,
+    };
+    selected = null;
+    // Branching preempts whatever is generating: stop it, let it settle, then fork.
+    return (active = (async () => { if (ctrl) { ctrl.abort(); await active; } await startRun(run); })());
+  }
+
+  // Sampler view: replay each generation segment with post_sampling_probs and
+  // the same seed, then check the sampled ids match before attaching the data.
+  // Segments matter because the sampler's random stream restarts per request,
+  // so an extended run must be replayed in the same pieces it was generated in.
+  async function fetchPost(run, signal) {
+    let off = 0;
+    for (const len of run.segments) {
+      const seg = run.steps.slice(off, off + len);
+      if (seg.length && seg.every((s) => s.post)) { off += len; continue; }
+      const { think, ...sampling } = run.params;
+      const done = run.steps.slice(0, off);
+      const body = { ...sampling, n_predict: len, post_sampling_probs: true,
+        prompt: run.engine.prefixPrompt(run.prompt, [...run.prefix, ...done.map((s) => s.id)], run.prefixText + new TextDecoder().decode(new Uint8Array(done.flatMap((s) => s.bytes)))) };
+      let i = 0;
+      for await (const ev of run.engine.completion(body, signal)) {
+        if (ev.stop) break;
+        for (const cp of ev.completion_probabilities || []) {
+          const step = seg[i++];
+          if (!step) break;
+          if (cp.id !== step.id) { setStatus(`Sampler filtering: run ${run.n} could not be replayed exactly (diverged at step ${run.start + step.index}). Set a seed under advanced.`); return false; }
+          step.post = llpeek.postFrom(cp);
+        }
+      }
+      off += len;
+    }
+    return true;
+  }
+  async function ensurePost() {
+    if (!$('post').checked || ctrl) return;
+    const todo = runs.filter((r) => r.steps.some((s) => !s.post));
+    if (!todo.length) return;
+    ctrl = new AbortController(); setBusy(true);
+    $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+    try {
+      for (const run of todo) {
+        setStatus(`Sampler filtering: replaying run ${run.n}\u2026`);
+        if (!(await fetchPost(run, ctrl.signal))) { renderAll(); return; }
+        renderAll();
+      }
+      setStatus('Sampler filtering ready: the thin bars show what the sampler was allowed to pick from');
+    } catch (e) {
+      setStatus(e.name === 'AbortError' ? 'Stopped' : `error: ${e.message}`);
+    } finally {
+      $('run').disabled = $('add').disabled = false; $('stop').disabled = true; ctrl = null; setBusy(false);
+    }
+  }
+  $('post').onchange = () => { renderAll(); ensurePost(); };
+
+  // Raising "length" after a run continues every run that stopped at the
+  // limit, from its exact token sequence (prompt + prefix + generated ids).
+  async function extendRuns(n) {
+    if (ctrl) return;
+    const todo = runs.filter((r) => r.steps.length < n && (!r.final || r.final.stop_type === 'limit'));
+    if (!todo.length) { if (runs.length) setStatus(`Nothing to extend: runs already have ${n} tokens or ended on their own`); return; }
+    ctrl = new AbortController(); setBusy(true);
+    $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+    let cur = null;
+    try {
+      for (const run of todo) {
+        const have = run.steps.slice(), more = n - have.length;
+        run.params.n_predict = n; cur = run; run.generating = true; renderAll();
+        const t0 = performance.now();
+        setStatus(`Run ${run.n}: adding ${more} more tokens\u2026`);
+        const { think, ...sampling } = run.params;
+        const haveText = new TextDecoder().decode(new Uint8Array(have.flatMap((s) => s.bytes)));
+        const body = { ...sampling, n_predict: more, prompt: run.engine.prefixPrompt(run.prompt, [...run.prefix, ...have.map((s) => s.id)], run.prefixText + haveText) };
+        const merge = (all) => {
+          run.steps = have.concat(all.map((s, i) => ({ ...s, index: have.length + i })));
+          llpeek.mergeText(run.steps);
+        };
+        let pending = false;
+        const { steps, final } = await llpeek.generate(run.engine, body, (s, all) => {
+          merge(all);
+          setStatus(`Run ${run.n}: adding tokens, ${rateText(all.length, t0)} so far`);
+          if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; renderAll(); }); }
+        }, ctrl.signal);
+        run.generating = false;
+        merge(steps); run.final = final; if (steps.length) run.segments.push(steps.length); renderAll();
+        setStatus(`Run ${run.n} now has ${run.steps.length} tokens${final?.stop_type === 'limit' ? '' : ' and the model chose to stop'}`);
+      }
+    } catch (e) {
+      setStatus(e.name === 'AbortError' ? 'Stopped' : `error: ${e.message}`);
+      if (cur) cur.generating = false; renderAll();
+    } finally {
+      if (cur) cur.generating = false;
+      $('run').disabled = $('add').disabled = false; $('stop').disabled = true; ctrl = null; setBusy(false);
+    }
+    await ensurePost();
+  }
+  $('n_predict').addEventListener('change', () => { const n = +$('n_predict').value; if (n > 0 && runs.length) active = extendRuns(n); });
+
+  $('run').onclick = () => { if (ctrl) return; runs = []; selected = null; colCur = []; colTarget = []; active = startRun(newRun()); };
+  $('add').onclick = () => { if (ctrl) return; active = startRun(newRun()); };
+  $('stop').onclick = () => ctrl?.abort();
+
+  // Prefill from the query string (?base=...&prompt=...&n_predict=..&run=1), for
+  // bookmarks and headless checks. `branch=<step>:<rank>` (repeatable, rank is
+  // 1-based in the top-K) forks the first run after it finishes.
+  const q = new URLSearchParams(location.search);
+  for (const k of ['base', 'prompt', 'n_predict', 'n_probs', 'temperature', 'top_k', 'top_p', 'min_p', 'seed']) {
+    if (q.has(k)) $(k).value = q.get(k);
+  }
+  if (q.has('chat')) $('mode').value = q.get('chat') === '1' ? 'chat' : 'raw';
+  if (q.has('post')) $('post').checked = q.get('post') === '1';
+  if (q.get('advanced') === '1') $('adv').click();
+  $('tempOut').value = $('temperature').value;
+  if (q.has('think')) { $('think').checked = q.get('think') === '1'; $('think').onchange(); }
+  if (LOCAL && q.has('engine')) { $('engine').value = q.get('engine'); $('engine').onchange(); }
+  else if (LOCAL && q.get('run') !== '1') detectEngine('startup');
+  if (q.get('run') === '1') {
+    (async () => {
+      if ($('engine').value === 'browser') {
+        fillModels();
+        if (q.has('model')) { $('model').value = 'url'; $('model').onchange(); $('modelUrl').value = q.get('model'); }
+        if (!(await loadModel())) return;
+      }
+      await (active = startRun(newRun()));
+      // branch=<step>:<rank> (1-based among unchosen) or branch=<step>:<token text>
+      for (const b of q.getAll('branch')) {
+        const i = b.indexOf(':'), g = Number(b.slice(0, i)), sel = b.slice(i + 1);
+        const root = runs[0], step = root?.steps[g];
+        const others = step?.candidates.filter((c) => c.id !== step.id) ?? [];
+        const cand = /^\d+$/.test(sel) ? others[Number(sel) - 1] : others.find((c) => c.token.trim() === sel.trim());
+        if (cand) await branch(root, g, cand); else setStatus(`branch: no candidate ${JSON.stringify(sel)} at step ${g}`);
+      }
+    })();
+  }
+})();
+</script>
+</body>
+</html>

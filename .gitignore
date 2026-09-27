@@ -1,0 +1,12 @@
+# models never live in the repo (see CLAUDE.md)
+*.gguf
+
+# agent and editor state
+.claude/
+.vscode/
+.idea/
+
+# OS and scratch
+.DS_Store
+*.log
+*.tmp

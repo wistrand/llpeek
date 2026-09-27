@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>wllama probe</title><pre id="out"></pre>
+<script type="module">
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.6.1/esm/index.js';
+import { Template } from 'https://cdn.jsdelivr.net/npm/@huggingface/jinja@0.5.10/dist/index.js';
+const out = document.getElementById('out');
+const log = (...a) => { out.textContent += a.map((x) => typeof x === 'string' ? x : JSON.stringify(x)).join(' ') + '\n'; };
+const q = new URLSearchParams(location.search);
+const brief = (r) => r.choices[0].logprobs.content.map((c) => [c.id, c.token, +(c.logprob ?? Math.log(c.prob)).toFixed(2)]);
+try {
+  const w = new Wllama({ default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.6.1/esm/wasm/wllama.wasm' });
+  const url = q.get('model') || 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf';
+  const t0 = performance.now();
+  let last = 0;
+  await w.loadModelFromUrl(url, { n_ctx: 2048, progressCallback: ({ loaded, total }) => { if (loaded - last > 4e8) { last = loaded; log('dl', Math.round(loaded / 1e6), '/', Math.round(total / 1e6), 'MB'); } } });
+  log('loaded in', Math.round(performance.now() - t0), 'ms; n_vocab', w.getLoadedContextInfo().n_vocab, 'mt', w.isMultithread(), 'threads', w.getNumThreads(), 'webgpu', w.isSupportWebGPU(), 'template', (w.getChatTemplate() || '').length, 'chars');
+  const t1 = performance.now();
+  const r1 = await w.createCompletion({ prompt: 'The capital of France is', max_tokens: 8, n_probs: 3, temperature: 0, stream: false });
+  log('RAW', JSON.stringify(r1.choices[0].text), brief(r1), 'tok/s', r1.timings.predicted_per_second.toFixed(1), 'prompt tok/s', r1.timings.prompt_per_second.toFixed(1));
+  const c1 = r1.choices[0].logprobs.content;
+  const prefixText = new TextDecoder().decode(new Uint8Array(c1.slice(0, 3).flatMap((c) => c.bytes)));
+  const r2 = await w.createCompletion({ prompt: 'The capital of France is' + prefixText, max_tokens: 3, n_probs: 1, temperature: 0, stream: false });
+  log('TEXT-PREFIX continue after', JSON.stringify(prefixText), '->', JSON.stringify(r2.choices[0].text), 'expected', JSON.stringify(c1.slice(3, 6).map((c) => c.token).join('')), 'prompt_tokens', r2.usage.prompt_tokens, 'expected', r1.usage.prompt_tokens + 3);
+  const r3 = await w.createCompletion({ prompt: 'The capital of France is:\n\n', max_tokens: 2, n_probs: 2, temperature: 0, stream: false });
+  log('THINK no bias:', brief(r3));
+  const r4 = await w.createCompletion({ prompt: 'The capital of France is:\n\n', max_tokens: 2, n_probs: 2, temperature: 0, stream: false, logit_bias: [['<think>', false]] });
+  log('THINK string bias:', brief(r4));
+  const tpl = new Template(w.getChatTemplate());
+  const ctx = w.getLoadedContextInfo();
+  for (const et of [true, false]) {
+    const p = tpl.render({ messages: [{ role: 'user', content: 'What is the capital of France?' }], add_generation_prompt: true, enable_thinking: et, bos_token: '', eos_token: '' });
+    log('JINJA enable_thinking=' + et + ':', JSON.stringify(p.slice(-80)));
+    if (!et) { const r5 = await w.createCompletion({ prompt: p, max_tokens: 6, n_probs: 1, temperature: 0, stream: false }); log('  chat answer:', JSON.stringify(r5.choices[0].text)); }
+  }
+  const r6 = await w.createCompletion({ prompt: 'Once upon a time', max_tokens: 6, n_probs: 2, temperature: 1.0, seed: 7, stream: false });
+  const r7 = await w.createCompletion({ prompt: 'Once upon a time', max_tokens: 6, n_probs: 2, temperature: 1.0, seed: 7, post_sampling_probs: true, stream: false });
+  log('SEEDED ids pre', r6.choices[0].logprobs.content.map((c) => c.id), 'post', r7.choices[0].logprobs.content.map((c) => c.id));
+  out.textContent = 'DONE\n' + out.textContent;
+} catch (e) { out.textContent = 'ERROR ' + e.message + '\n' + (e.stack || '') + '\n' + out.textContent; }
+</script>
