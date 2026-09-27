@@ -67,6 +67,11 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
   `n_probs` logprobs. Set them explicitly in requests so the UI's display of "what
   was sampled" is reproducible; use `seed` for repeatability.
 
+- **The headless tools decide "idle" from the status line.** `scripts/headless.ts`
+  and `scripts/shot.ts` wait until Stop is disabled and the status matches
+  done, error, stopped or ready (plus a few fixed phrases). A new final status
+  without one of those words makes every headless check time out, which is
+  how the first resampling status was caught (2026-09-27).
 - **Headless Chrome `--screenshot` with `--virtual-time-budget` does not wait for
   an SSE stream.** It captured the page mid-generation. `scripts/shot.ts` drives
   Chrome over the DevTools protocol and polls the status line for `done` instead.

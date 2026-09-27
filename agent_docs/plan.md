@@ -139,7 +139,7 @@ with three lanes.
 prints a rect count above zero and a summary starting "From step 4". `deno task shot`
 with the same URL shows the three tracks under the lanes, aligned to the columns.
 
-### Phase 5: resampling from a step (planned 2026-09-27)
+### Phase 5: resampling from a step (done 2026-09-27)
 
 Goal: turn a branch from an anecdote into a measurement. One branch is one
 draw; N draws from the same point show how much the continuation depends on
@@ -163,8 +163,9 @@ Decisions:
   steps, final }] }`, generated through the same `generate()` path (mixed
   prompt on the server, `prefixPrompt` text in the browser), streamed one
   sample at a time with "sample 3 of 8" in the status line. One set at a time;
-  a new resample replaces it, and it is dropped when its run is extended or
-  the page starts over.
+  a new resample replaces it, and it is dropped when the page starts over.
+  Extending its run keeps it (the prefix is unchanged). Stopping mid-set keeps
+  the finished samples and makes their count the set's N.
 - **View: a count Sankey under the lanes.** Same geometry as a lane, but a
   node is (step, token) with height = count / N and a link between consecutive
   steps carries the number of samples that took that pair. Columns sum to N,
@@ -188,7 +189,7 @@ Decisions:
   enabled when a sampled node is selected and randomness > 0; N in advanced
   (default 8, max 32). Query string `resample=<step>:<n>` for headless runs
   and screenshots. The tooltip's "Click to see what would have followed"
-  becomes "Click for one continuation from here; resample for the spread".
+  becomes "Click for one continuation from here".
 - **Cost.** N requests of `n_predict` tokens. 8 × 14 tokens on the 2B model at
   35 tok/s is about 4 s on the server, 10 s in the browser. Sequential
   requests; the server's parallel slots would only matter for larger N.
@@ -198,24 +199,19 @@ Decisions:
   with a heatmap of outcome change per step, the grouping needs an embedding
   or entailment model (see semantic divergence under Phase 4).
 
-Steps:
+Built as planned, with these additions: the source column carries a dashed
+marker and a ribbon from the token before it leads into the sample lane; a
+selected token shows an in-place "resample ×N" label at its column (also the
+toolbar button, which names the target, and the `r` key); the fork track is
+drawn under the count Sankey rather than in the panel; readouts 3 and 4 are
+the track and a column in the continuation table. Per-sample columns take
+part in `layoutColumns()` so the lane aligns with the runs.
 
-1. Data: `resample(run, g, n)` producing the sample set, reusing
-   `branch()`'s prefix construction without a forced token; abort and status
-   handling as for runs; `params` inherited from the run like a branch.
-2. Layout: `layoutColumns()` includes the set's steps so columns align; the
-   set gets a lane slot after the runs, before the compare tracks.
-3. Render: count Sankey from the set's per-step token counts and pair counts.
-4. Panel: the four readouts. Group by final text first; the agreement curve
-   is a by-product of the majority prefix.
-5. Controls, query string, tooltip wording, docs, screenshots.
-
-**Verify:** `resample=4:8` on the reference prompt at `seed=3, temperature=1.0`
-produces 8 samples whose step-4 frequencies roughly track the post-sampling
-distribution of the root run's step 4, the headless readout lists the
-distinct continuations with counts summing to 8, and the same URL twice gives
-the same groups. At `temperature=0` the button is disabled and the panel
-explains why.
+**Verify:** `resample=4:8` on the reference prompt at `seed=3, temperature=1.0,
+n_predict=10` gives 8 samples, " located" drawn 6 of 8 against a stated 32%,
+8 distinct continuations, identical on a second run (checked 2026-09-27
+against the 2B Qwen on 8089; the status line ends "Resampling done: ..."). At
+`temperature=0` the status says randomness is 0 and the button stays disabled.
 
 ## Open questions
 

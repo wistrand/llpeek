@@ -125,6 +125,7 @@
   #chart text.lane { fill: var(--ink-2); font-weight: 600; cursor: pointer; }
   #chart text.lane:hover { fill: var(--ink); }
   #chart text.head { fill: var(--ink-2); font-weight: 600; }
+  #chart text.action { font-weight: 600; cursor: pointer; text-decoration: underline; }
   #chart rect.mini { stroke: none; }
   #chart rect.quiet { fill-opacity: 0.35; }
   #chart text.quiet { fill: var(--muted); font-weight: 400; }
@@ -150,6 +151,8 @@
   #compare p { margin: 6px 0; font-size: 13px; max-width: 80ch; }
   #compare td.tok { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
   #compare td.same { color: var(--muted); }
+  #resample p { margin: 6px 0; font-size: 13px; max-width: 80ch; }
+  #resample td.tok { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
   .hidden { display: none; }
 </style>
 </head>
@@ -201,6 +204,7 @@ A token is a word or a piece of one.</p>
     <label title="Sampler: keep the smallest set of tokens whose chances add up to p">top_p <input id="top_p" type="number" value="0.95" step="0.05" min="0" max="1"></label>
     <label title="Sampler: drop tokens less likely than this fraction of the best one">min_p <input id="min_p" type="number" value="0.05" step="0.01" min="0" max="1"></label>
     <label title="Same seed and settings reproduce the same output">seed <input id="seed" type="number" value="1"></label>
+    <label title="How many continuations to draw when resampling from a step">resamples <input id="n_samples" type="number" value="8" min="2" max="32"></label>
     <label title="A column stays closed, as wide as its token, while the top candidate holds at least this share of the probability. Lower it to open more columns">open a column when the top pick is under <input id="closed_p" type="number" value="0.85" step="0.05" min="0" max="1"></label>
     <button id="add" title="Add a run with the current settings as a new lane, keeping existing lanes">add a run to compare</button>
     <label class="inline" title="Second pass with post_sampling_probs: what the sampler could pick from after top_k, top_p, min_p and randomness"><input id="post" type="checkbox"> show sampler filtering</label>
@@ -210,12 +214,13 @@ A token is a word or a piece of one.</p>
 <div id="text"></div>
 <div class="toolbar">
   <div class="legend" id="legend">
-    <span class="l-cand">a token the model considered but did not pick. Click it to see what would have happened.</span>
+    <span class="l-cand">a token the model considered but did not pick. Click it for one continuation from there.</span>
     <span class="l-other">everything else it considered</span>
   </div>
   <span class="spacer"></span>
   <button id="collapse" title="Fold all runs except the selected one">fold runs</button>
   <button id="expand" title="Unfold all runs">unfold</button>
+  <button id="resample" disabled title="Select a sampled token first; randomness must be above 0">resample from the selected step</button>
   <button id="cmp" aria-pressed="true" title="Compare two runs from the step where they diverge">compare runs</button>
   <button id="view" aria-pressed="false">as a table</button>
 </div>
@@ -223,6 +228,7 @@ A token is a word or a piece of one.</p>
 <div id="chart"></div>
 <div id="tableWrap" class="hidden"></div>
 <div id="compare"></div>
+<div id="resample"></div>
 <div id="tip" role="tooltip"></div>
 
 <script>
@@ -463,6 +469,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   const MAX_RUNS = 8;                    // one categorical slot each; never cycled
   const POST_W = 5, POST_DX = 8;         // sampler-view bar: width and offset left of the node
   let ctrl = null, runs = [], selected = null;   // selected: { run, index }
+  let sampleSet = null;                          // resamples from one step: { run, g, n, seed, params, samples[], generating }
   let active = Promise.resolve();                // the generation in progress, awaited before preempting it
   let browser = null;                            // loaded browser engine, if any
   // Served by scripts/serve.ts? Only then can a llama-server exist next to the
@@ -629,8 +636,34 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     return Math.min(OPEN_MAX, Math.max(OPEN_MIN, NODE_W + 6 + w + PAD));
   }
   let colCur = [], colTarget = [];
+  const liveSet = () => (sampleSet && runs.includes(sampleSet.run) ? sampleSet : null);
+  // Per-step token counts across the samples, and counts of consecutive pairs.
+  function sampleColumns(set) {
+    const cols = [], pairs = [], L = Math.max(0, ...set.samples.map((s) => s.steps.length));
+    for (let j = 0; j < L; j++) {
+      const m = new Map();
+      for (const smp of set.samples) { const st = smp.steps[j]; if (!st) continue; const e = m.get(st.id) || { id: st.id, token: st.token, count: 0 }; e.count++; m.set(st.id, e); }
+      cols.push([...m.values()].sort((a, b) => b.count - a.count || a.token.localeCompare(b.token)));
+      if (j > 0) {
+        const pm = new Map();
+        for (const smp of set.samples) {
+          const a = smp.steps[j - 1], b = smp.steps[j]; if (!a || !b) continue;
+          const key = `${a.id}:${b.id}`, e = pm.get(key) || { a: a.id, b: b.id, count: 0 }; e.count++; pm.set(key, e);
+        }
+        pairs.push([...pm.values()]);
+      }
+    }
+    return { cols, pairs, L };
+  }
+  function sampleWidth(col, n) {
+    if (col.length === 1) return Math.max(CLOSED_MIN, NODE_W + 6 + textW(vis(col[0].token), true) + PAD);
+    const w = Math.max(...col.map((e, i) => textW(`${vis(e.token)} ${e.count}/${n}`, i === 0)));
+    return Math.min(OPEN_MAX, Math.max(OPEN_MIN, NODE_W + 6 + w + PAD));
+  }
   function layoutColumns() {
     colTarget = [];
+    const set = liveSet();
+    if (set) sampleColumns(set).cols.forEach((col, j) => { const g = set.g + j; colTarget[g] = Math.max(colTarget[g] ?? 0, sampleWidth(col, set.n)); });
     for (const run of runs) {
       run.steps.forEach((step, i) => {
         const g = run.start + i;
@@ -699,8 +732,9 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const xs = [X0]; for (const w of colCur) xs.push(xs[xs.length - 1] + w);
     let cmp = cmpOn() ? compareData() : null;
     if (cmp?.why === 'none') cmp = null;   // one run: the view is on by default, so stay quiet
+    const set = liveSet(), setH = set ? SAMP.top + SAMP.h + SAMP.gap + SAMP.head + SAMP.track + SAMP.bottom : 0;
     // The compare tracks label the line ends to the right of the last column.
-    const W = xs[xs.length - 1] + 8 + (cmp ? 44 : 0), HT = Math.max(acc, 1) + (cmp ? CMP_H : 0);
+    const W = xs[xs.length - 1] + 8 + (cmp ? 44 : 0), HT = Math.max(acc, 1) + setH + (cmp ? CMP_H : 0);
     const svg = el('svg', { width: W, height: HT, viewBox: `0 0 ${W} ${HT}`, role: 'img',
       'aria-label': `Candidate mass per generated token, ${runs.length} run(s), ${colCur.length} steps` });
     const defs = el('defs', {}, svg);
@@ -754,7 +788,17 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         const xNext = xs[g + 1], stub = Math.min(STUB, Math.max(6, w - NODE_W - 4));
         for (const r of rows) { r.y0 = top + (r.y0 - TOP) * f; r.y1 = top + (r.y1 - TOP) * f; r.h *= f; }
         const col = el('g', { class: 'col' + (isSel(run, i) ? ' sel' : ''), opacity: 1 }, lane);
-        if (showText && (open || g % 5 === 0) && w >= 22) el('text', { x, y: top - 8, class: 'idx', opacity: tOpacity }, col).textContent = g;
+        if (isSel(run, i) && showText && canResample()) {
+          // the action lives at the selected column, so any sampled token can be resampled in place
+          const act = el('text', { x, y: top - 8, class: 'action', opacity: tOpacity, style: `fill:${color(run)}` }, col);
+          act.textContent = `\u21bb resample \u00d7${$('n_samples').value}`; act._action = 'resample';
+          el('title', {}, act).textContent = `Draw ${$('n_samples').value} continuations from here, redrawing this step too (or press r)`;
+        } else if (showText && (open || g % 5 === 0) && w >= 22) el('text', { x, y: top - 8, class: 'idx', opacity: tOpacity }, col).textContent = g;
+        if (set && set.run === run && g === set.g) {
+          // the column the sample set redraws
+          const src = el('rect', { x: x - 3, y: top - 3, width: NODE_W + 6, height: colH + 6, rx: 3, fill: 'none', stroke: color(run), 'stroke-dasharray': '3 2', class: 'src' }, col);
+          el('title', {}, src).textContent = `step ${g} was redrawn ${set.n} times; the resamples are below`;
+        }
 
         if ($('post').checked && step.post) {
           // sampler distribution as a thin bar left of the node column, same order, renormalized
@@ -770,6 +814,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         for (const r of rows) {
           const h = Math.max(0, r.h - GAP * f);
           const child = r.kind === 'cand' && runs.find((b) => b.parent === run && b.forkStep === g && b.forced.id === r.id);
+          if (r.kind === 'chosen' && set && set.run === run && g === set.g - 1) set.origin = { x: x + NODE_W, y0: yOff + r.y0, y1: yOff + r.y1 };
           if (r.kind === 'chosen' && i + 1 < run.steps.length) {
             el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, xNext, yOff + top, yOff + top + colH), fill: soft(run), 'fill-opacity': quiet ? 0.45 : emph }, links);
           } else if (child) {
@@ -798,7 +843,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         }
       });
     });
-    if (cmp) drawCompare(cmp, svg, xs, Math.max(acc, 1));
+    if (set) drawSamples(set, svg, xs, links, nodes, Math.max(acc, 1));
+    if (cmp) drawCompare(cmp, svg, xs, Math.max(acc, 1) + setH);
     chart.appendChild(svg);
   }
 
@@ -1022,6 +1068,155 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const lastOf = (key) => { const r = [...rows].reverse().find((r) => r[key] != null); return r ? r[key] : 0; };
     line(pA, ca, a, lastOf('cumA')); line(pB, cb, b, lastOf('cumB'));
   }
+  // ---- resampling: N continuations from one step, drawn as a count Sankey.
+  // A node is (step, token) with height count/N; a link between consecutive
+  // steps carries the number of samples that took that pair. Columns sum to
+  // the samples that reached the step; there is no "other" node because every
+  // sample is a draw. Under it, a track with the share of samples still on the
+  // majority path, which is where the continuations fork.
+  const SAMP = { top: 40, h: 150, gap: 10, head: 16, track: 24, bottom: 8 };
+  function majorityShare(set) {
+    const N = set.samples.length, shares = [];
+    let alive = set.samples.slice();
+    for (let j = 0; alive.length; j++) {
+      const m = new Map();
+      for (const smp of alive) { const st = smp.steps[j]; if (st) m.set(st.id, (m.get(st.id) || 0) + 1); }
+      if (!m.size) break;
+      const [id] = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+      alive = alive.filter((smp) => smp.steps[j]?.id === id);
+      shares.push(alive.length / N);
+    }
+    return shares;
+  }
+  function drawSamples(set, svg, xs, links, nodes, y0) {
+    const run = set.run, N = set.n, { cols, pairs } = sampleColumns(set);
+    const lane = el('g', { transform: `translate(0,${y0})` }, nodes);
+    el('line', { x1: 0, x2: xs[xs.length - 1] + 8, y1: 0.5, y2: 0.5, stroke: 'var(--grid)' }, lane);
+    const head = el('text', { x: X0, y: 16, class: 'head' }, lane);
+    head.textContent = `${set.samples.length} of ${N} resamples from step ${set.g} of run ${run.n} (seeds ${set.seed + 1} to ${set.seed + N}, redrawing step ${set.g} and after)${set.generating ? '\u2026' : ''}`;
+    const geo = cols.map((col) => { let y = SAMP.top; return col.map((e) => { const h = (e.count / N) * SAMP.h, r = { ...e, y0: y, y1: y + h, h, outOff: 0, inOff: 0 }; y = r.y1; return r; }); });
+    // ribbon from the token before the redrawn step down to the first sample column
+    if (set.origin && geo[0]?.length && xs[set.g] != null) {
+      const h0 = geo[0][geo[0].length - 1].y1 - SAMP.top;
+      el('path', { d: ribbon(set.origin.x, set.origin.y0, set.origin.y1, xs[set.g], y0 + SAMP.top, y0 + SAMP.top + h0), fill: soft(run), 'fill-opacity': 0.6 }, links);
+    }
+    set.origin = null;
+    geo.forEach((col, j) => {
+      const g = set.g + j, x = xs[g], open = col.length > 1;
+      if (x == null) return;
+      if (open || j % 5 === 0) el('text', { x, y: SAMP.top - 8, class: 'idx' }, lane).textContent = g;
+      col.forEach((r, i) => {
+        const rect = el('rect', { x, y: r.y0, width: NODE_W, height: Math.max(0, r.h - GAP), rx: 2, fill: color(run), 'fill-opacity': i === 0 ? 0.85 : 0.5, class: 'node' }, lane);
+        el('title', {}, rect).textContent = `step ${g}: ${JSON.stringify(r.token)} in ${r.count} of ${N} samples`;
+        if (i === 0 || r.h >= LABEL_MIN) {
+          const tx = el('text', { x: x + NODE_W + 4, y: r.y0 + r.h / 2 + 4, class: i === 0 ? 'chosen' : 'cand' }, lane);
+          tx.textContent = open ? `${vis(r.token)} ${r.count}/${N}` : vis(r.token);
+        }
+      });
+    });
+    pairs.forEach((ps, j) => {
+      const x0 = xs[set.g + j] + NODE_W, x1 = xs[set.g + j + 1], A = geo[j], B = geo[j + 1];
+      if (x1 == null) return;
+      const order = ps.map((p) => ({ ...p, ia: A.findIndex((r) => r.id === p.a), ib: B.findIndex((r) => r.id === p.b) })).sort((p, q) => p.ia - q.ia || p.ib - q.ib);
+      for (const p of order) {
+        const ra = A[p.ia], rb = B[p.ib], h = (p.count / N) * SAMP.h;
+        const a0 = ra.y0 + ra.outOff, b0 = rb.y0 + rb.inOff; ra.outOff += h; rb.inOff += h;
+        el('path', { d: ribbon(x0, y0 + a0, y0 + a0 + h, x1, y0 + b0, y0 + b0 + h), fill: soft(run) }, links);
+      }
+    });
+    // the fork track
+    const ty = SAMP.top + SAMP.h + SAMP.gap;
+    el('text', { x: X0, y: ty + 12, class: 'head' }, lane).textContent = 'share of samples still on the majority path (where it drops, the continuations fork)';
+    const shares = majorityShare(set), by = ty + SAMP.head;
+    shares.forEach((sh, j) => {
+      const x = xs[set.g + j]; if (x == null) return;
+      const h = Math.max(1, sh * SAMP.track);
+      const r = el('rect', { x, y: by + SAMP.track - h, width: NODE_W, height: h, fill: color(run), 'fill-opacity': 0.6, class: 'mini' }, lane);
+      el('title', {}, r).textContent = `step ${set.g + j}: ${Math.round(sh * N)} of ${N} samples still agree`;
+    });
+    el('line', { x1: xs[set.g], x2: xs[xs.length - 1], y1: by + SAMP.track + 0.5, y2: by + SAMP.track + 0.5, stroke: 'var(--grid)' }, lane);
+  }
+  const resampleEl = $('resample');
+  function renderResample() {
+    const set = liveSet();
+    if (!set) { resampleEl.innerHTML = ''; return; }
+    const run = set.run, N = set.n, k = set.g - run.start, at = run.steps[k], done = set.samples.filter((smp) => smp.final || !set.generating);
+    // 1. the redrawn step against what the model said there
+    const { cols } = sampleColumns(set);
+    const first = cols[0] ?? [];
+    const stated = (id) => at?.candidates.find((c) => c.id === id);
+    const post = (id) => at?.post ? (at.post.top.find((c) => c.id === id)?.prob ?? 0) : null;
+    const rows1 = first.map((e) => `<tr><td class="tok">${esc(vis(e.token))}</td><td class="n">${e.count} of ${N}</td><td class="n">${pct(e.count / N)}</td>` +
+      `<td class="n">${stated(e.id) ? pct(stated(e.id).prob) : 'beyond the top-K'}</td>${at?.post ? `<td class="n">${pct(post(e.id))}</td>` : ''}</tr>`).join('');
+    // 2. distinct continuations by exact text, with mean surprisal per token
+    const groups = new Map();
+    for (const smp of done) {
+      const text = smp.steps.map((st) => st.text ?? '').join(''), g = groups.get(text) || { text, n: 0, bits: 0, tokens: 0 };
+      g.n++; g.bits += smp.steps.reduce((t, st) => t - st.logprob / Math.LN2, 0); g.tokens += smp.steps.length; groups.set(text, g);
+    }
+    const gs = [...groups.values()].sort((a, b) => b.n - a.n);
+    const H = gs.reduce((h, g) => { const p = g.n / done.length; return h - p * Math.log2(p); }, 0);
+    const rows2 = gs.map((g) => `<tr><td class="n">${g.n}</td><td class="tok">${esc(vis(g.text.length > 120 ? g.text.slice(0, 120) + '\u2026' : g.text))}</td><td class="n">${g.tokens ? (g.bits / g.tokens).toFixed(1) : ''}</td></tr>`).join('');
+    resampleEl.innerHTML =
+      `<p>Step ${set.g} of ${rt(run)} redrawn ${done.length}${set.generating ? ` of ${N}` : ''} times at randomness ${set.params.temperature}, seeds ${set.seed + 1} to ${set.seed + N}. ` +
+      `${gs.length} distinct continuation${gs.length === 1 ? '' : 's'}${done.length > 1 ? `, ${H.toFixed(2)} bits of outcome entropy (${Math.log2(done.length).toFixed(2)} would mean all different)` : ''}. ` +
+      `<span class="muted">Each draw is one sample; the counts are the measurement, the original run is just the first draw.</span></p>` +
+      `<table><thead><tr><th>token drawn at step ${set.g}</th><th>drawn</th><th>share</th><th>model's probability${at ? ` in run ${run.n}` : ''}</th>${at?.post ? '<th>after the sampler\'s filters</th>' : ''}</tr></thead><tbody>${rows1}</tbody></table>` +
+      `<table><thead><tr><th>count</th><th>continuation</th><th>bits of surprise per token</th></tr></thead><tbody>${rows2}</tbody></table>`;
+  }
+  const canResample = () => selected && selected.index >= 0 && selected.run.params.temperature > 0 && !ctrl;
+  function updateResampleButton() {
+    const b = $('resample'); b.disabled = !canResample();
+    b.textContent = canResample() ? `resample \u00d7${$('n_samples').value} from step ${selected.run.start + selected.index} of run ${selected.run.n}` : 'resample from the selected step';
+    b.title = !selected || selected.index < 0 ? 'Select a sampled token (click it) first'
+      : !(selected.run.params.temperature > 0) ? 'Randomness is 0 in that run, so every draw would be identical'
+      : ctrl ? 'Wait for the current generation' : `Draw ${$('n_samples').value} new continuations from step ${selected.run.start + selected.index}, redrawing that step too`;
+  }
+  // N continuations from the prefix before step g of `run`, seeds seed+1..seed+N.
+  function resample(run, g, n) {
+    const k = g - run.start, kept = run.steps.slice(0, k);
+    const set = {
+      run, g, n, seed: run.params.seed, params: { ...run.params }, samples: [], generating: true,
+      prefix: [...run.prefix, ...kept.map((st) => st.id)],
+      prefixText: run.prefixText + new TextDecoder().decode(new Uint8Array(kept.flatMap((st) => st.bytes))),
+    };
+    return (active = (async () => {
+      if (ctrl) { ctrl.abort(); await active; }
+      sampleSet = set; ctrl = new AbortController(); setBusy(true);
+      $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+      const engine = run.engine, t0 = performance.now();
+      const { think, ...sampling } = set.params;
+      const prompt = engine.prefixPrompt(run.prompt, set.prefix, set.prefixText);
+      let pending = false;
+      const redraw = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; renderAll(); }); } };
+      try {
+        for (let i = 1; i <= n; i++) {
+          const smp = { seed: set.seed + i, steps: [], final: null };
+          set.samples.push(smp);
+          const { steps, final } = await llpeek.generate(engine, { ...sampling, seed: smp.seed, prompt }, (st, all) => {
+            smp.steps = all; setStatus(`Resampling step ${g} of run ${run.n}: sample ${i} of ${n}, ${rateText(all.length, t0)}`); redraw();
+          }, ctrl.signal);
+          smp.steps = steps; smp.final = final;
+        }
+        set.generating = false; renderAll();
+        const groups = new Set(set.samples.map((smp) => smp.steps.map((st) => st.id).join(','))).size;
+        setStatus(`Resampling done: step ${g} of run ${run.n} redrawn ${n} times in ${((performance.now() - t0) / 1000).toFixed(1)} s, ${groups} distinct continuation${groups === 1 ? '' : 's'}`);
+      } catch (e) {
+        // Keep the samples that finished; the set then counts them as its N so
+        // shares, labels and the panel stay consistent. No finished sample: no set.
+        set.samples = set.samples.filter((smp) => smp.final);
+        set.n = set.samples.length;
+        if (!set.n && sampleSet === set) sampleSet = null;
+        setStatus(e.name === 'AbortError' ? `Resampling stopped after ${set.n} finished sample${set.n === 1 ? '' : 's'}` : `error: ${e.message}`);
+      } finally {
+        set.generating = false; ctrl = null; setBusy(false);
+        $('run').disabled = $('add').disabled = false; $('stop').disabled = true;
+        renderAll();
+      }
+    })());
+  }
+  $('n_samples').oninput = () => renderAll();   // the button and the in-chart label name N
+  $('resample').onclick = () => { if (!canResample()) return; const n = Math.max(2, Math.min(32, +$('n_samples').value || 8)); resample(selected.run, selected.run.start + selected.index, n); };
   $('cmp').onclick = () => {
     const show = compareEl.classList.toggle('hidden') === false;
     $('cmp').setAttribute('aria-pressed', show);
@@ -1033,6 +1228,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     renderText(); renderLegend(); layoutColumns(); animate(); if (!animating) render();
     if (!tableWrap.classList.contains('hidden')) renderTable();
     if (!compareEl.classList.contains('hidden')) renderCompare();
+    renderResample(); updateResampleButton();
   }
 
   // Tooltip + selection + branching
@@ -1073,7 +1269,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         (row.kind === 'chosen'
           ? `<span class="m">picked at step ${g} in run ${run.n}, ${rankWord(step.rank)}${adv ? `; path logprob ${cum.toFixed(2)}` : ''}</span>` + offTop()
           : child ? `<span class="m">step ${g}, ${rankWord(row.rank)}; explored as run ${child.n}</span>`
-                  : `<span class="m">step ${g}, ${rankWord(row.rank)}, not picked. Click to see what would have followed.</span>`) +
+                  : `<span class="m">step ${g}, ${rankWord(row.rank)}, not picked. Click for one continuation from here.</span>`) +
         postLine(row.id);
     tip.style.display = 'block';
     tip.style.left = `${Math.min(e.clientX + 12, window.innerWidth - 340)}px`;
@@ -1092,6 +1288,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   });
   chart.addEventListener('click', (e) => {
     if (e.target._lane) { setCollapsed(e.target._lane, !e.target._lane.collapsed); return; }
+    if (e.target._action === 'resample') { $('resample').click(); return; }
     const info = e.target._info; if (!info) return;
     const { run, step, row, g, child } = info;
     if (run.collapsed) { setCollapsed(run, false); return; }
@@ -1310,6 +1507,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!$('run').disabled) $('run').click(); }
     else if (e.key === 'Escape' && ctrl) { e.preventDefault(); $('stop').click(); }
+    else if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { if (!$('resample').disabled) $('resample').click(); }
   });
   // Fork `parent` at global step g, forcing candidate `cand` instead of what was sampled.
   function branch(parent, g, cand) {
@@ -1420,7 +1618,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   }
   $('n_predict').addEventListener('change', () => { const n = +$('n_predict').value; if (n > 0 && runs.length) active = extendRuns(n); });
 
-  $('run').onclick = () => { if (ctrl) return; runs = []; selected = null; colCur = []; colTarget = []; active = startRun(newRun()); };
+  $('run').onclick = () => { if (ctrl) return; runs = []; selected = null; sampleSet = null; colCur = []; colTarget = []; active = startRun(newRun()); };
   $('add').onclick = () => { if (ctrl) return; active = startRun(newRun()); };
   $('stop').onclick = () => ctrl?.abort();
 
@@ -1456,6 +1654,11 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         const others = step?.candidates.filter((c) => c.id !== step.id) ?? [];
         const cand = /^\d+$/.test(sel) ? others[Number(sel) - 1] : others.find((c) => c.token.trim() === sel.trim());
         if (cand) await branch(root, g, cand); else setStatus(`branch: no candidate ${JSON.stringify(sel)} at step ${g}`);
+      }
+      if (q.has('resample')) {
+        const [g, n] = q.get('resample').split(':').map(Number), root = runs[0];
+        if (root?.steps[g] && root.params.temperature > 0) await resample(root, g, Math.max(2, Math.min(32, n || +$('n_samples').value || 8)));
+        else setStatus(`resample: no step ${g} in run 1, or randomness is 0`);
       }
     })();
   }

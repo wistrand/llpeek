@@ -72,6 +72,11 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
   step, and how the path probability drifts apart ("compare runs" toggles
   them). Probabilities come with their surprisal in bits wherever a tooltip
   or table shows them.
+- One branch is one draw. Select a sampled token and press "resample" (or
+  `r`) to redraw that step and everything after it N times with different
+  seeds. The draws appear as a count Sankey under the runs, with a track
+  showing where the continuations fork, and a panel with the drawn tokens
+  against the model's stated probabilities and the distinct continuations.
   Sampling knobs, the server address, the threshold that decides when a
   column opens, and the technical readouts are under "advanced".
 
@@ -97,4 +102,4 @@ Working: streaming generation, the Sankey trace, branching from any candidate,
 side-by-side runs, extending runs by raising the length, chat-template mode with
 thinking on or off, a sampler view showing what survived top-k / top-p / min-p /
 temperature, collapsible lanes, table view, a compare view for two runs after
-they diverge, light and dark mode. See `agent_docs/plan.md`.
+they diverge, resampling a step N times, light and dark mode. See `agent_docs/plan.md`.

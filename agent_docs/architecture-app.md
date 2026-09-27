@@ -262,6 +262,26 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Legend lists runs with their settings and fork origin; click to select a lane.
 - "table view" swaps the chart for a table with one row per step and the full
   candidate list. It is the accessibility fallback for the chart.
+- Resampling (`resample(run, g, n)`, state `sampleSet`, one set at a time,
+  dropped when the runs reset): N continuations from the prefix before step g
+  of a run, seeds `seed+1..seed+N`, generated one after another through
+  `llpeek.generate` with the run's params. `sampleColumns()` counts tokens per
+  step and consecutive pairs; `drawSamples()` draws a count Sankey under the
+  lanes (node height count/N, links carry pair counts, no "other" node) with
+  a fork track below it (`majorityShare`: the share of samples still on the
+  majority path). The source column gets a dashed `rect.src` marker and a
+  ribbon from the previous token (`set.origin`, recorded during the lane
+  pass) into the first sample column. `renderResample()` fills `#resample`:
+  the redrawn step's draws against the model's stated probability (and the
+  post-filter one when the sampler view is on), and the continuations grouped
+  by exact text with counts, outcome entropy in bits and mean surprisal per
+  token. Actions: the toolbar button (names its target when enabled), the
+  in-place `text.action` label at a selected column, and the `r` key; all
+  need a selected sampled token in a run with randomness above 0. N is
+  clamped to 2..32. Stopping mid-set keeps the finished samples and sets the
+  set's N to their count (an empty set is dropped). Query string
+  `resample=<step>:<n>` acts on the first run after any branches. The final
+  status starts "Resampling done" so the headless tools see the page as idle.
 - "compare runs" is on by default (`?compare=0` turns it off) and shows nothing
   until there are two runs. It compares two runs that share a prompt.
   `compareData()` builds it: `pathOf(run)` rebuilds a run's full token path by
@@ -291,7 +311,8 @@ add new motion by extending the tween state, so one loop owns all motion.
   `n_predict`, `n_probs`, `temperature`, `top_k`, `top_p`, `min_p`, `seed`,
   `closed_p`; `chat=1` selects assistant mode, `think=1`, `post=1`,
   `advanced=1`, `compare=0` hides the compare view, which is on by default; `engine=browser` plus
-  optional `model=<url>` loads a model first); `run=1` starts a run on load; `branch=<step>:<rank>` or
+  optional `model=<url>` loads a model first; `resample=<step>:<n>` redraws
+  that step of the first run n times after the branches); `run=1` starts a run on load; `branch=<step>:<rank>` or
   `branch=<step>:<token text>` (repeatable) then forks the first run at that
   global step taking the rank-th unchosen candidate, or the candidate whose
   trimmed token matches. Used by `scripts/shot.ts`.
