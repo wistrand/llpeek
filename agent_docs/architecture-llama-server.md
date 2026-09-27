@@ -165,6 +165,12 @@ differs per model):
 So `n_probs` logprobs are pre-bias as well as pre-sampling: the chart keeps
 showing the forbidden candidate, and the sampled node sits below it.
 
+The string form `[["<think>", false]]` is tokenized by the server and the bias
+applied to every resulting token. Verified 2026-09-27: `[["<think>", false]]`
+blocks the special token on Qwen3.5 (same result as the id form), and
+`[[" Paris is", false]]` bans " Paris" after "The capital of France is". Use the
+id form when a tokenizer is available; see gotchas.
+
 ## `/tokenize`, `/props`, `/health`
 
 ```bash

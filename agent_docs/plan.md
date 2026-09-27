@@ -104,7 +104,7 @@ with three lanes.
 
 ### Phase 4: comparing runs
 
-- [x] Difference view (2026-09-27): "compare runs" draws three tracks under the
+- [x] Difference view (2026-09-27, on by default): "compare runs" draws three tracks under the
       lanes, aligned to the columns from the divergence step: token match,
       entropy in bits, and accumulated path logprob per run. A summary sentence
       sits under the chart; the numbers as a table only in advanced mode. Root
@@ -116,9 +116,16 @@ with three lanes.
       `--embedding` (and the 2B chat model's embeddings are of doubtful quality;
       a small dedicated embedding model would be a second download). Decide
       whether it is worth a second model before building it.
-Note on the browser model list: SmolLM2 360M, Gemma 3 1B and Llama 3.2 1B were
-probed headless on 2026-09-27 and generate through their own chat templates.
-SmolLM3 3B Q4_K_M was only checked for size and CORS.
+- [x] Browser model list (2026-09-27): SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B
+      and SmolLM3 3B Q4 next to the Qwen quants, with byte sizes for the note
+      next to the load button (a warning at 1 GB and up). The first three were
+      probed headless and generate through their own chat templates; SmolLM3
+      was only checked for size and CORS.
+- [x] Think bias only when the chat template mentions `<think>` (2026-09-27);
+      the string form was banning `<`, `think`, `>` on other models. See gotchas.
+- [x] "Other" bucket computed over the candidates shown (2026-09-27), so a
+      column with a beyond-top-K sample sums to 1.
+- [x] Closed-column threshold adjustable under advanced (`closed_p`, 2026-09-27).
 
 **Verify:** `deno task headless "<app>?run=1&engine=server&base=http://localhost:8089&prompt=The%20capital%20of%20France%20is&n_predict=8&seed=3&temperature=1.0&branch=4:1&compare=1" 90 "document.querySelectorAll('#chart .cmp rect').length + ' | ' + document.getElementById('compare').innerText"`
 prints a rect count above zero and a summary starting "From step 4". `deno task shot`
@@ -126,8 +133,13 @@ with the same URL shows the three tracks under the lanes, aligned to the columns
 
 ## Open questions
 
-- **Rendering cost.** `render()` rebuilds the SVG on every step. Fine so far;
-  measure before Phase 3 adds more paths.
+- **Rendering cost.** `render()` rebuilds the SVG on every step. Measured
+  2026-09-27 in headless Chrome, three lanes: 240 columns (7.5k SVG nodes)
+  rebuild in about 2 ms of script time, 600 columns (19k nodes) in about 6 ms,
+  against a 28 ms per-token budget at 35 tok/s and 16 ms per animation frame.
+  Layout and paint after the swap are not in those numbers. Not worth
+  optimizing until traces get several times longer; the cheap step then is to
+  coalesce streamed tokens into one render per animation frame.
 - **Model picker for llama-server.** It loads one model per process. Either
   restart the server from the UI (needs a middle tier) or document manual
   restarts. The browser engine has its own picker.

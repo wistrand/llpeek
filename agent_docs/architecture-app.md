@@ -5,7 +5,7 @@
 | Block  | Contents                                                                 | Constraint                          |
 |--------|--------------------------------------------------------------------------|-------------------------------------|
 | first  | `llpeek` object: `health`, `props`, `tokenize`, `completion` (SSE), `generate`, `stepFrom`, `mergeText` | pure; no `document`; loaded by `scripts/check.mjs` |
-| second | UI: controls, Sankey render, text strip, table view, tooltip, query-string prefill | may use everything                  |
+| second | UI: controls, Sankey render with the compare tracks, text strip, table view, compare panel, tooltip, query-string prefill | may use everything                  |
 
 ## Contents
 - Step model
@@ -26,7 +26,9 @@
 - `candidates`: the server's `top_logprobs` sorted by logprob desc, each with
   `rank` (0-based position in the raw top-K). If the sampled token is not in the
   top-K it is inserted with `rank: -1` and the step's `rank` is -1.
-- `remainder`: `1 - sum(exp(top-K logprobs))`, the mass outside the top-K.
+- `remainder`: `1 - sum(candidates[].prob)`, the mass outside the candidates
+  shown. When the sampled token was beyond the top-K and got appended, it is
+  taken out of the tail here, so a column always sums to 1.
 - `text`/`partial`: set by `mergeText(steps)`. A step whose bytes complete a
   UTF-8 sequence owns the decoded text; steps that only contributed a prefix get
   `''` and `partial: true`. `mergeText` is idempotent and re-run on every step.
@@ -140,7 +142,9 @@ One column per generated token, left to right. Lanes stack vertically, one per
 run, `LANE` px each.
 
 Column width encodes hesitation (`stepWidth`). A column is closed when its top
-candidate holds at least `CLOSED_P` (0.85): it is as wide as the sampled
+candidate holds at least `CLOSED_P` (0.85 by default; the "open a column when
+the top pick is under" field under advanced, `#closed_p`, also `?closed_p=`,
+changes it live): it is as wide as the sampled
 token's label, shows no percentage and no candidate labels, so a confident
 stretch reads like a line of text over a solid ribbon. Otherwise it is open:
 wide enough for its candidate labels, between `OPEN_MIN` and `OPEN_MAX`.
@@ -238,8 +242,9 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Controls: prompt textarea, Run (primary; Ctrl+Enter or Cmd+Enter), Stop
   (Escape), randomness slider, length, mode, think first, run on. Choosing the
   browser engine reveals a model row (curated public URLs, or a URL) with a load
-  button and progress. Advanced: server URL, candidates per step (n_probs),
-  top_k, top_p, min_p, seed, "add a run to compare", "show sampler filtering".
+  button, a size note (a warning above 1 GB) and progress. Advanced: server
+  URL, candidates per step (n_probs), top_k, top_p, min_p, seed, the
+  closed-column threshold, "add a run to compare", "show sampler filtering".
 - Text strip: one row per run, prompt in muted ink, then each step's `text`.
   It scrolls, is selectable, and each token is hoverable (tooltip) and
   clickable (select the step, expand its lane, scroll the chart to its column).
@@ -250,11 +255,13 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Legend lists runs with their settings and fork origin; click to select a lane.
 - "table view" swaps the chart for a table with one row per step and the full
   candidate list. It is the accessibility fallback for the chart.
-- "compare runs" (`?compare=1`) compares two runs that share a prompt.
+- "compare runs" is on by default (`?compare=0` turns it off) and shows nothing
+  until there are two runs. It compares two runs that share a prompt.
   `compareData()` builds it: `pathOf(run)` rebuilds a run's full token path by
   global step by walking up the branch chain (the forced candidate at the fork
   carries the probability its parent reported for it), and the divergence step
-  is the first position where the two paths differ. `render()` then appends
+  is the first position where the two paths differ by token text (text, not
+  id, so runs on different models still line up where they agree). `render()` then appends
   three tracks under the lanes inside the Sankey SVG (`drawCompare`, height
   `CMP_H`), so they share the column x positions and scroll with the runs, in
   the two run colors: same token or not (one gray cell, or a cell split in the
@@ -269,8 +276,10 @@ add new motion by extending the tween state, so one loop owns all motion.
   selected branch and its parent, else the latest branch and its parent, else
   the first two runs; the selects override it. Semantic divergence (embedding
   distance between the two continuations) is not implemented; see plan.md.
-- Query string: any control id as a parameter prefills it (`chat=1` selects
-  assistant mode, `think=1`, `post=1`, `advanced=1`; `engine=browser` plus
+- Query string: any control id as a parameter prefills it (`base`, `prompt`,
+  `n_predict`, `n_probs`, `temperature`, `top_k`, `top_p`, `min_p`, `seed`,
+  `closed_p`; `chat=1` selects assistant mode, `think=1`, `post=1`,
+  `advanced=1`, `compare=1` opens the compare view; `engine=browser` plus
   optional `model=<url>` loads a model first); `run=1` starts a run on load; `branch=<step>:<rank>` or
   `branch=<step>:<token text>` (repeatable) then forks the first run at that
   global step taking the rank-th unchosen candidate, or the candidate whose

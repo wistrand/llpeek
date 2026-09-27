@@ -17,7 +17,9 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
 - **The sampled token may be missing from `top_logprobs`.** The list is the raw
   top-K; at nonzero temperature the sampled token can rank below it and then only
   appears in the outer `id`/`token`/`logprob`. Render the sampled token from the
-  outer fields and add it to the candidate list if absent.
+  outer fields and add it to the candidate list if absent, and compute the
+  "other" bucket over the candidates actually shown, not the raw top-K, or that
+  column sums to more than 1 (llpeek did until 2026-09-27).
 - **Top-K logprobs do not sum to 1.** The missing mass is the rest of the vocabulary
   (150k+ tokens for Qwen). Show it as an explicit "other" bucket or the chart lies.
 - **`token` strings can be broken UTF-8.** Multibyte characters are often split
@@ -45,6 +47,13 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
   off the page also sends `logit_bias [[<think id>, false]]` in every mode. The
   id is looked up per server via `/tokenize`; models whose `<think>` is not a
   single token get no bias.
+- **A string entry in `logit_bias` biases every token it tokenizes to.**
+  `[[" Paris is", false]]` banned " Paris" (verified 2026-09-27 on 8089). On a
+  model whose `<think>` is one special token the string form blocks that token,
+  same as the id form; on a model without it, `"<think>"` becomes the pieces
+  `<`, `think`, `>` and all three get banned. The browser engine has no
+  tokenizer call, so it sends the string form only when the chat template
+  mentions `<think>`. Never send a string bias without knowing it is one token.
 - **Thinking is a chat-template feature, not a sampling one.** In raw prompt mode
   the model just continues the text; `<think>` only appears when the prompt was
   rendered by the chat template. "Thinking off" means the template pre-fills an
@@ -79,7 +88,8 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
 - **Every headless Chrome run downloads the model again.** wllama's cache lives
   in the browser profile, and headless runs start fresh, so each
   `deno task headless` or browser-engine `deno task shot` pulls 2 GB from
-  Hugging Face. Use `model=<stories260K url>` for cheap probes.
+  Hugging Face. Use `model=<stories260K url>` for cheap probes, and the 0.4 GB
+  SmolLM2 360M when the output has to make sense (both URLs in `MODELS`).
 - **Official `Qwen/*-GGUF` and `ggml-org/Qwen3.5-*` repos answer 401.** Use
   `bartowski/Qwen_Qwen3.5-2B-GGUF` or `unsloth/Qwen3.5-2B-GGUF`, both public.
   The local files map to: Qwen 2B/4B from bartowski, `SmolLM3-Q8_0.gguf` from

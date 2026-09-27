@@ -34,11 +34,17 @@ during the phases without bytes. Steps:
 
 Model URLs: any CORS-enabled URL. The UI offers a curated list (`MODELS` in the
 UI block: Qwen3.5 2B in two quants, SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B,
-SmolLM3 3B Q4, stories260K) and a free URL field. The string-form
-`logit_bias [["<think>", false]]` is sent to every model when thinking is off;
-on SmolLM2, which has no `<think>` token, the output at temperature 0 was
-identical with and without it (probed 2026-09-27), so it is inert there rather
-than harmful. Default: Hugging Face
+SmolLM3 3B Q4, stories260K, each with its byte size for the note next to the
+load button; a typed URL is sized with a HEAD request, which the Hugging Face
+CDN answers with CORS; 1 GB and up is shown as a warning) and a free URL field.
+The string-form
+`logit_bias [["<think>", false]]` is only sent when the model's chat template
+mentions `<think>`. Reason: llama-server (also the copy inside wllama) tokenizes
+a string entry and biases every resulting token, verified 2026-09-27 with
+`[[" Paris is", false]]` banning " Paris". On a model without a `<think>`
+token the string would ban the pieces "<", "think" and ">" instead. wllama
+3.6.1 has no tokenizer call in JS, so the template is the only cheap signal.
+Default: Hugging Face
 `bartowski/Qwen_Qwen3.5-2B-GGUF`, file `Qwen_Qwen3.5-2B-Q8_0.gguf` (2.08 GB,
 byte-identical to the local server default). Hugging Face `resolve` links 302 to
 a CDN; with a browser `Origin` header the redirect echoes the origin and the CDN
@@ -70,7 +76,7 @@ the native event shape the rest of the app consumes.
 | mixed prompt `[string, ...ids]`           | string prompts only (`type must be string` error, then the worker is wedged) | `engine.prefixPrompt(prompt, ids, text)`: text built from the exact bytes of the prefix tokens. Verified to re-tokenize identically for ASCII paths; `checkPrefix()` compares `usage.prompt_tokens` with root prompt length + prefix length and warns on drift |
 | `/tokenize`                               | none                                                | `engine.tokenize` is null; status omits the prompt token count          |
 | `/apply-template`                         | template source only                                | jinja rendered client-side                                              |
-| `logit_bias [[id, false]]`                | same, and the string form `[["<think>", false]]` works | browser engine uses the string form (no tokenizer needed)              |
+| `logit_bias [[id, false]]`                | same, and the string form `[["<think>", false]]` works; a multi-token string bans every piece | browser engine uses the string form, only when the template mentions `<think>` |
 | `stop_type: limit / eos`                  | `finish_reason: length / stop`                      | mapped in `completion()`                                                |
 | any file size                             | one file up to 2 GB (ArrayBuffer limit); split with `llama-gguf-split --split-max-size 512M` for bigger | the 2B Q8_0 (2.08e9 bytes) fits; SmolLM3 and larger local files do not without splitting |
 

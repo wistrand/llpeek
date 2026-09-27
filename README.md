@@ -17,7 +17,7 @@ of two engines:
 llpeek is only the front end. It turns that stream of probabilities into a chart
 you can read.
 
-<a href="docs/screenshot-dark.png"><img src="docs/thumb-dark.png" width="700" alt="llpeek showing a Sankey of candidate tokens per step for 'The capital of France is', with a branch explored where the model considered Lyon"></a>
+<a href="docs/screenshot-dark.png"><img src="docs/thumb-dark.png" width="700" alt="llpeek showing a Sankey of candidate tokens per step for 'The capital of France is', two branches taken where the model considered ' located' and ' France', and compare tracks below lining up the last branch with the first run"></a>
 
 <sub>Click for full size. <a href="docs/screenshot-light.png">Light mode</a>. Live site: <a href="https://wistrand.github.io/llpeek/">wistrand.github.io/llpeek</a>.</sub>
 
@@ -56,15 +56,18 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
   Append `-m <model>` or other llama-server flags to the llama task to override.
 - No llama-server? Set "run on" to "this browser" and press "load model". The
   default is the same 2B Qwen from Hugging Face, downloaded once and cached by
-  the browser. Any CORS-enabled GGUF URL under 2 GB works. The published site
+  the browser; the list also has SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B and
+  SmolLM3 3B, and any CORS-enabled GGUF URL under 2 GB works. A note next to
+  the button gives the download size before you start. The published site
   offers only this engine; the server option appears when the page is served
   by `deno task serve`, which also looks for the server when the page opens.
 - Hover a node for details, click a gray candidate to branch from it, click a
-  run's label to fold it, or switch to "as a table". "compare runs" lines up
-  two runs from the step where they part: which tokens match, how much the
-  model hesitated at each step, and how the path probability drifts apart.
-  Sampling knobs, the server address and the technical readouts are under
-  "advanced".
+  run's label to fold it, or switch to "as a table". With two runs on screen,
+  the compare tracks under the lanes line them up from the step where they
+  part: which tokens match, how much the model hesitated at each step, and how
+  the path probability drifts apart ("compare runs" toggles them).
+  Sampling knobs, the server address, the threshold that decides when a
+  column opens, and the technical readouts are under "advanced".
 
 ## Related
 

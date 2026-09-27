@@ -14,6 +14,7 @@
     --cand: #c3c2b7; --cand-soft: rgba(137,135,129,0.28);
     --other: #e1e0d9; --other-ink: #898781;
     --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+    --warn: #9a5b00;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -25,6 +26,7 @@
       --cand: #52514e; --cand-soft: rgba(137,135,129,0.28);
       --other: #2c2c2a; --other-ink: #898781;
       --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+      --warn: #eda100;
     }
   }
   :root[data-theme="dark"] {
@@ -36,6 +38,7 @@
     --cand: #52514e; --cand-soft: rgba(137,135,129,0.28);
     --other: #2c2c2a; --other-ink: #898781;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --warn: #eda100;
   }
   body { margin: 0; padding: 16px; background: var(--page); color: var(--ink);
          font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -55,6 +58,7 @@
   .checks { display: flex; gap: 10px; padding: 5px 0; }
   select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
   .muted { color: var(--muted); font-size: 12px; }
+  .warn { color: var(--warn); font-weight: 600; }
   #loadInfo { display: inline-flex; align-items: center; gap: 8px; }
   #loadInfo.hidden { display: none; }
   progress { accent-color: var(--chosen); width: 200px; height: 8px; }
@@ -120,6 +124,7 @@
   #chart text.idx { fill: var(--muted); font-variant-numeric: tabular-nums; }
   #chart text.lane { fill: var(--ink-2); font-weight: 600; cursor: pointer; }
   #chart text.lane:hover { fill: var(--ink); }
+  #chart text.head { fill: var(--ink-2); font-weight: 600; }
   #chart rect.mini { stroke: none; }
   #chart rect.quiet { fill-opacity: 0.35; }
   #chart text.quiet { fill: var(--muted); font-weight: 400; }
@@ -183,6 +188,7 @@ A token is a word or a piece of one.</p>
     <label>model <select id="model"></select></label>
     <label id="modelUrlLabel" class="hidden">model URL <input id="modelUrl" placeholder="https://huggingface.co/<repo>/resolve/main/<file>.gguf" size="52"></label>
     <button id="load">load model</button>
+    <span id="modelNote" class="muted"></span>
     <span id="loadInfo" class="hidden"><progress id="loadBar" max="100"></progress><span id="loadText" class="muted"></span></span>
   </div>
   <div id="advanced" class="panel hidden">
@@ -193,6 +199,7 @@ A token is a word or a piece of one.</p>
     <label title="Sampler: keep the smallest set of tokens whose chances add up to p">top_p <input id="top_p" type="number" value="0.95" step="0.05" min="0" max="1"></label>
     <label title="Sampler: drop tokens less likely than this fraction of the best one">min_p <input id="min_p" type="number" value="0.05" step="0.01" min="0" max="1"></label>
     <label title="Same seed and settings reproduce the same output">seed <input id="seed" type="number" value="1"></label>
+    <label title="A column stays closed, as wide as its token, while the top candidate holds at least this share of the probability. Lower it to open more columns">open a column when the top pick is under <input id="closed_p" type="number" value="0.85" step="0.05" min="0" max="1"></label>
     <button id="add" title="Add a run with the current settings as a new lane, keeping existing lanes">add a run to compare</button>
     <label class="inline" title="Second pass with post_sampling_probs: what the sampler could pick from after top_k, top_p, min_p and randomness"><input id="post" type="checkbox"> show sampler filtering</label>
   </div>
@@ -207,13 +214,13 @@ A token is a word or a piece of one.</p>
   <span class="spacer"></span>
   <button id="collapse" title="Fold all runs except the selected one">fold runs</button>
   <button id="expand" title="Unfold all runs">unfold</button>
-  <button id="cmp" aria-pressed="false" title="Compare two runs from the step where they diverge">compare runs</button>
+  <button id="cmp" aria-pressed="true" title="Compare two runs from the step where they diverge">compare runs</button>
   <button id="view" aria-pressed="false">as a table</button>
 </div>
 <p id="hint" class="muted">Press Run. Each column will show the tokens the model weighed at that step: the tallest is the likeliest, the colored one is what it picked. Wide columns are where it hesitated.</p>
 <div id="chart"></div>
 <div id="tableWrap" class="hidden"></div>
-<div id="compare" class="hidden"></div>
+<div id="compare"></div>
 <div id="tip" role="tooltip"></div>
 
 <script>
@@ -286,12 +293,15 @@ const llpeek = (() => {
       cand.sort((a, b) => b.logprob - a.logprob);
       rank = -1;
     }
-    const topMass = cp.top_logprobs.reduce((s, t) => s + Math.exp(t.logprob), 0);
+    // Mass outside the candidates shown. Summed over `cand`, not the raw top-K,
+    // so a sampled token added from beyond the top-K comes out of the tail and
+    // the column still sums to 1.
+    const shown = cand.reduce((s, c) => s + c.prob, 0);
     return {
       index, id: cp.id, token: cp.token, bytes: cp.bytes,
       logprob: cp.logprob, prob: Math.exp(cp.logprob), rank,
       candidates: cand,
-      remainder: Math.max(0, 1 - topMass),   // mass outside the raw top-K
+      remainder: Math.max(0, 1 - shown),
       text: null,                             // filled by mergeText
     };
   }
@@ -377,7 +387,11 @@ const llpeek = (() => {
       },
       // wllama only takes string prompts, so continue from the prefix's exact bytes as text.
       prefixPrompt: (prompt, ids, text) => prompt + text,
-      thinkBias: async () => [['<think>', false]],
+      // wllama has no tokenizer call, so the bias uses the string form, which the
+      // server code inside wllama tokenizes: a real <think> token on models that
+      // have one, but on other models the pieces "<", "think", ">", all of which
+      // it would then ban. Only bias when the chat template itself uses <think>.
+      thinkBias: async () => /<think>/.test(tplSrc ?? '') ? [['<think>', false]] : null,
       completion: async function* (body, signal) {
         const { prompt, n_predict, ...rest } = body;
         const it = await w.createCompletion({ ...rest, prompt, max_tokens: n_predict, stream: true, abortSignal: signal });
@@ -452,16 +466,46 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // Served by scripts/serve.ts? Only then can a llama-server exist next to the
   // page. Published (GitHub Pages) or opened from disk: browser engine only.
   const LOCAL = window.LLPEEK_LOCAL === true;
-  // Public GGUFs that load in a browser (CORS-enabled, under the 2 GB single-file limit).
+  // Public GGUFs that load in a browser (CORS-enabled, under the 2 GB single-file
+  // limit). [label, url, bytes]; bytes from the CDN's content-length, 2026-09-27.
   const MODELS = [
-    ['Qwen3.5 2B Q8_0 (2.1 GB, same as the server default)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf'],
-    ['Qwen3.5 2B Q4_K_M (1.4 GB, faster download)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf'],
-    ['SmolLM2 360M Instruct Q8_0 (0.4 GB, Hugging Face)', 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf'],
-    ['Gemma 3 1B Instruct Q8_0 (1.1 GB, Google)', 'https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf'],
-    ['Llama 3.2 1B Instruct Q8_0 (1.3 GB, Meta)', 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf'],
-    ['SmolLM3 3B Q4_K_M (1.9 GB, Hugging Face, thinking model)', 'https://huggingface.co/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q4_K_M.gguf'],
-    ['tiny test model: stories260K (1 MB)', 'https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf'],
+    ['Qwen3.5 2B Q8_0 (2.1 GB, same as the server default)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf', 2080140384],
+    ['Qwen3.5 2B Q4_K_M (1.4 GB, faster download)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf', 1396198496],
+    ['SmolLM2 360M Instruct Q8_0 (0.4 GB, Hugging Face)', 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf', 386404992],
+    ['Gemma 3 1B Instruct Q8_0 (1.1 GB, Google)', 'https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf', 1069306368],
+    ['Llama 3.2 1B Instruct Q8_0 (1.3 GB, Meta)', 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf', 1321083008],
+    ['SmolLM3 3B Q4_K_M (1.9 GB, Hugging Face, thinking model)', 'https://huggingface.co/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q4_K_M.gguf', 1915305312],
+    ['tiny test model: stories260K (1 MB)', 'https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf', 1185376],
   ];
+  // Size note next to the load button, so a multi-GB download is announced
+  // before it starts. Known models carry their size; a typed URL gets a HEAD
+  // request (Hugging Face answers it with CORS), else the size stays unknown.
+  const BIG_MODEL = 1e9;
+  const gb = (b) => `${(b / 1e9).toFixed(1)} GB`;
+  const modelSize = new Map(MODELS.map(([, url, bytes]) => [url, bytes]));
+  const modelUrlValue = () => $('model').value === 'url' ? $('modelUrl').value.trim() : $('model').value;
+  async function sizeOf(url) {
+    if (modelSize.has(url)) return modelSize.get(url);
+    try {
+      const r = await fetch(url, { method: 'HEAD' }), n = +r.headers.get('content-length');
+      if (r.ok && n > 0) { modelSize.set(url, n); return n; }
+    } catch { /* no CORS, offline, or a bad URL: the download itself will report */ }
+    return null;
+  }
+  let noteSeq = 0;
+  async function updateModelNote() {
+    const url = modelUrlValue(), note = $('modelNote'), seq = ++noteSeq;
+    note.textContent = ''; note.classList.remove('warn');
+    if (!url) return;
+    const bytes = await sizeOf(url);
+    if (seq !== noteSeq) return;   // the selection changed meanwhile
+    if (bytes == null) { note.textContent = 'size unknown until the download starts'; return; }
+    const big = bytes >= BIG_MODEL;
+    note.classList.toggle('warn', big);
+    note.textContent = big
+      ? `Large download: ${gb(bytes)}, once. Your browser keeps a copy and needs about that much memory to run it.`
+      : `${gb(bytes)} download, kept by the browser after the first time.`;
+  }
   function currentEngine() {
     if ($('engine').value === 'browser') {
       if (!browser) throw new Error('Load a model first: pick one under "run on: this browser" and press "load model"');
@@ -506,11 +550,14 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // numbers at top-8, then the columns.
   const H = 260, TOP = 54, BOTTOM = 10, LANE = TOP + H + BOTTOM, NODE_W = 12, GAP = 2, STUB = 34, LABEL_MIN = 9;
   // Column width encodes hesitation. A column is "closed" when the top candidate
-  // holds at least CLOSED_P: it gets just enough room for the sampled token's
+  // holds at least CLOSED_P (0.85 by default, the "open a column when" field
+  // under advanced): it gets just enough room for the sampled token's
   // label, so confident stretches read like text. Otherwise it opens to fit the
   // candidate labels (OPEN_MIN..OPEN_MAX px). Widths are per global step, the max
   // over lanes, so lanes stay aligned; they tween like lane heights do.
-  const CLOSED_P = 0.85, CLOSED_MIN = 26, OPEN_MIN = 72, OPEN_MAX = 150, PAD = 10, X0 = 16;
+  let CLOSED_P = 0.85;
+  const CLOSED_MIN = 26, OPEN_MIN = 72, OPEN_MAX = 150, PAD = 10, X0 = 16;
+  $('closed_p').oninput = () => { const v = +$('closed_p').value; if (v >= 0 && v <= 1) { CLOSED_P = v; renderAll(); } };
   const measureCtx = document.createElement('canvas').getContext('2d');
   const textW = (t, bold) => { measureCtx.font = `${bold ? '600 ' : ''}11px system-ui, -apple-system, "Segoe UI", sans-serif`; return measureCtx.measureText(t).width; };
   // Share of the step's mass held by whitespace-only candidates. When it is at
@@ -640,8 +687,10 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const offs = []; let acc = 0;
     for (const r of runs) { offs.push(acc); acc += r.laneH; }
     const xs = [X0]; for (const w of colCur) xs.push(xs[xs.length - 1] + w);
-    const cmp = cmpOn() ? compareData() : null;
-    const W = xs[xs.length - 1] + 8, HT = Math.max(acc, 1) + (cmp ? CMP_H : 0);
+    let cmp = cmpOn() ? compareData() : null;
+    if (cmp?.why === 'none') cmp = null;   // one run: the view is on by default, so stay quiet
+    // The compare tracks label the line ends to the right of the last column.
+    const W = xs[xs.length - 1] + 8 + (cmp ? 44 : 0), HT = Math.max(acc, 1) + (cmp ? CMP_H : 0);
     const svg = el('svg', { width: W, height: HT, viewBox: `0 0 ${W} ${HT}`, role: 'img',
       'aria-label': `Candidate mass per generated token, ${runs.length} run(s), ${colCur.length} steps` });
     const defs = el('defs', {}, svg);
@@ -807,7 +856,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const own = run.steps.map(entryOf);
     if (!run.parent) return own;
     const up = pathOf(run.parent), at = up[run.forkStep];
-    if (!at) return own;   // the parent has not reached the fork yet (it was cut short)
+    if (!at) return [];    // the parent never reached the fork: nothing lines up
     const f = run.forced;
     return [...up.slice(0, run.forkStep), { id: f.id, token: f.token, prob: f.prob, logprob: Math.log(f.prob), dist: at.dist }, ...own];
   }
@@ -826,16 +875,16 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     if (a === b) return { a, b, why: 'same' };
     if (a.prompt !== b.prompt) return { a, b, why: 'prompt' };
     const pa = pathOf(a), pb = pathOf(b);
-    let d = 0; while (d < pa.length && d < pb.length && pa[d].id === pb[d].id) d++;
+    let d = 0; while (d < pa.length && d < pb.length && pa[d].token === pb[d].token) d++;
     if (d >= pa.length || d >= pb.length) return { a, b, why: 'agree', n: Math.min(pa.length, pb.length) };
     let cumA = 0, cumB = 0, same = 0, both = 0, hA = 0, hB = 0, hMax = 1;
     const idsA = new Set(), idsB = new Set(), rows = [];
     for (let g = d; g < Math.max(pa.length, pb.length); g++) {
       const ea = pa[g], eb = pb[g];
       const HA = ea ? entropy(ea.dist) : null, HB = eb ? entropy(eb.dist) : null;
-      if (ea) { cumA += ea.logprob; idsA.add(ea.id); hA += HA; hMax = Math.max(hMax, HA); }
-      if (eb) { cumB += eb.logprob; idsB.add(eb.id); hB += HB; hMax = Math.max(hMax, HB); }
-      const eq = !!(ea && eb && ea.id === eb.id); if (ea && eb) { both++; if (eq) same++; }
+      if (ea) { cumA += ea.logprob; idsA.add(ea.token); hA += HA; hMax = Math.max(hMax, HA); }
+      if (eb) { cumB += eb.logprob; idsB.add(eb.token); hB += HB; hMax = Math.max(hMax, HB); }
+      const eq = !!(ea && eb && ea.token === eb.token); if (ea && eb) { both++; if (eq) same++; }
       rows.push({ g, ea, eb, eq, HA, HB, cumA: ea ? cumA : null, cumB: eb ? cumB : null });
     }
     const nA = pa.length - d, nB = pb.length - d, n = Math.min(nA, nB);
@@ -850,19 +899,19 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   function renderCompare() {
     const c = compareData();
     const opts = (sel) => runs.map((r) => `<option value="${r.n}"${sel === r ? ' selected' : ''}>run ${r.n}</option>`).join('');
-    if (c.why === 'none') { compareEl.innerHTML = '<p class="muted">Nothing to compare yet: branch from a gray candidate, or add a second run.</p>'; return; }
+    if (c.why === 'none') { compareEl.dataset.key = ''; compareEl.innerHTML = ''; return; }
     const { a, b } = c;
     let body;
     if (c.why === 'same') body = '<p class="muted">Pick two different runs.</p>';
     else if (c.why === 'prompt') body = `<p class="muted">${rt(a)} and ${rt(b)} have different prompts, so their steps do not line up.</p>`;
-    else if (c.why === 'agree') body = `<p class="muted">${rt(a)} and ${rt(b)} agree on every token so far (${c.n} steps).</p>`;
+    else if (c.why === 'agree') body = c.n ? `<p class="muted">${rt(a)} and ${rt(b)} agree on every token so far (${c.n} steps).</p>` : '<p class="muted">Nothing to line up yet.</p>';
     else {
       const ratio = Math.exp(Math.abs(c.fairB - c.fairA)), less = c.fairB < c.fairA ? b : a;
       body = `<p>From step ${c.d}, where ${rt(a)} picked ${esc(JSON.stringify(c.pa[c.d].token))} and ${rt(b)} picked ${esc(JSON.stringify(c.pb[c.d].token))}: ` +
         `${c.same} of ${c.both} positions hold the same token, and ${c.shared} of ${c.union} distinct tokens appear in both. ` +
         `Hesitation averaged ${bits(c.hA)} bits per step in ${rt(a)} and ${bits(c.hB)} bits in ${rt(b)}. ` +
         `Over the first ${c.n} steps after the split the model gave ${rt(a)} a path logprob of ${c.fairA.toFixed(2)} and ${rt(b)} ${c.fairB.toFixed(2)}` +
-        (ratio >= 1.05 ? `, so the path of ${rt(less)} was ${ratio < 100 ? ratio.toFixed(1) : ratio.toExponential(1)} times less likely.` : ', about the same.') + '</p>';
+        (ratio >= 1.05 ? `, so the path of ${rt(less)} was ${ratio < 10 ? ratio.toFixed(1) : ratio < 1e6 ? Math.round(ratio).toLocaleString('en-US') : ratio.toExponential(1)} times less likely.` : ', about the same.') + '</p>';
       if (advanced()) {
         const tok = (e, r, eq) => e ? `<td class="tok${eq ? ' same' : ''}"${eq ? '' : ` style="color: ${color(r)}"`}>${esc(vis(e.token))}</td>` : '<td class="muted">(ended)</td>';
         const rows = c.rows.map((r) => `<tr><td class="n">${r.g}</td>${tok(r.ea, a, r.eq)}${tok(r.eb, b, r.eq)}<td class="n">${bits(r.HA)}</td><td class="n">${bits(r.HB)}</td><td class="n">${r.HA != null && r.HB != null ? sgn(r.HB - r.HA) : ''}</td>` +
@@ -870,9 +919,16 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         body += `<table><thead><tr><th>step</th><th>${rt(a)}</th><th>${rt(b)}</th><th>bits ${rt(a)}</th><th>bits ${rt(b)}</th><th>change</th><th>logprob ${rt(a)}</th><th>logprob ${rt(b)}</th><th>difference</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
       }
     }
-    compareEl.innerHTML = `<div class="row">compare <select id="cmpA">${opts(a)}</select> with <select id="cmpB">${opts(b)}</select></div>` + body;
-    const pick = () => { cmpSel = { a: +$('cmpA').value, b: +$('cmpB').value }; renderAll(); };
-    $('cmpA').onchange = pick; $('cmpB').onchange = pick;
+    // Rebuild the selects only when the run list or the pair changed, so an open
+    // dropdown survives the re-render on every streamed token.
+    const key = `${runs.map((r) => r.n).join(',')}|${a.n}|${b.n}`;
+    if (compareEl.dataset.key !== key) {
+      compareEl.dataset.key = key;
+      compareEl.innerHTML = `<div class="row">compare <select id="cmpA">${opts(a)}</select> with <select id="cmpB">${opts(b)}</select></div><div id="cmpBody"></div>`;
+      const pick = () => { cmpSel = { a: +$('cmpA').value, b: +$('cmpB').value }; renderAll(); };
+      $('cmpA').onchange = pick; $('cmpB').onchange = pick;
+    }
+    $('cmpBody').innerHTML = body;
   }
   // The strip under the lanes: three tracks aligned to the columns from the
   // divergence step. Match: one cell per step, gray when both runs picked the
@@ -885,7 +941,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const g = el('g', { transform: `translate(0,${y0})`, class: 'cmp' }, svg);
     el('line', { x1: 0, x2: xs[xs.length - 1] + 8, y1: 0.5, y2: 0.5, stroke: 'var(--grid)' }, g);
     if (c.why) {
-      const t = el('text', { x: X0, y: 20, class: 'lane' }, g);
+      const t = el('text', { x: X0, y: 20, class: 'head' }, g);
       t.textContent = c.why === 'none' ? 'compare: branch from a gray candidate, or add a second run'
         : c.why === 'same' ? 'compare: pick two different runs'
         : c.why === 'prompt' ? `compare: run ${c.a.n} and run ${c.b.n} have different prompts`
@@ -894,18 +950,19 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     }
     const { a, b, d, rows } = c, ca = color(a), cb = color(b);
     const mid = (x) => xs[x] + NODE_W / 2;
-    const head = (y, text) => { const t = el('text', { x: X0, y: y + 12, class: 'lane' }, g); t.textContent = text; return y + CMP.head; };
+    const head = (y, text) => { const t = el('text', { x: X0, y: y + 12, class: 'head' }, g); t.textContent = text; return y + CMP.head; };
     let y = 6;
     y = head(y, `compare run ${a.n} with run ${b.n} from step ${d}: same token?`);
     for (const r of rows) {
       const x = xs[r.g]; if (x == null) continue;
       if (!(r.ea && r.eb)) continue;   // only one run reaches this step: nothing to match
-      if (r.eq) el('rect', { x, y, width: 2 * NODE_W, height: CMP.match, rx: 2, fill: 'var(--cand)', class: 'mini' }, g);
+      const cell = el('g', {}, g);
+      if (r.eq) el('rect', { x, y, width: 2 * NODE_W, height: CMP.match, rx: 2, fill: 'var(--cand)', class: 'mini' }, cell);
       else {
-        el('rect', { x, y, width: NODE_W, height: CMP.match, rx: 1, fill: ca, class: 'mini' }, g);
-        el('rect', { x: x + NODE_W, y, width: NODE_W, height: CMP.match, rx: 1, fill: cb, class: 'mini' }, g);
+        el('rect', { x, y, width: NODE_W, height: CMP.match, rx: 1, fill: ca, class: 'mini' }, cell);
+        el('rect', { x: x + NODE_W, y, width: NODE_W, height: CMP.match, rx: 1, fill: cb, class: 'mini' }, cell);
       }
-      el('title', {}, g.lastChild).textContent = r.eq ? `step ${r.g}: both picked ${JSON.stringify(r.ea.token)}` : `step ${r.g}: run ${a.n} picked ${JSON.stringify(r.ea.token)}, run ${b.n} picked ${JSON.stringify(r.eb.token)}`;
+      el('title', {}, cell).textContent = r.eq ? `step ${r.g}: both picked ${JSON.stringify(r.ea.token)}` : `step ${r.g}: run ${a.n} picked ${JSON.stringify(r.ea.token)}, run ${b.n} picked ${JSON.stringify(r.eb.token)}`;
     }
     y += CMP.match + CMP.gap;
     y = head(y, `hesitation at each step, bits (taller is less sure)`);
@@ -1032,7 +1089,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     sel.value = MODELS[0][1];
     sel.onchange();
   }
-  $('model').onchange = () => { $('modelUrlLabel').classList.toggle('hidden', $('model').value !== 'url'); };
+  $('model').onchange = () => { $('modelUrlLabel').classList.toggle('hidden', $('model').value !== 'url'); updateModelNote(); };
+  $('modelUrl').onchange = updateModelNote;
   $('engine').onchange = () => {
     const b = $('engine').value === 'browser';
     $('browserRow').classList.toggle('hidden', !b);
@@ -1040,8 +1098,9 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   };
   async function loadModel() {
     if (ctrl) return;
-    const url = $('model').value === 'url' ? $('modelUrl').value.trim() : $('model').value;
+    const url = modelUrlValue();
     if (!url) { setStatus('Enter a model URL'); return; }
+    const size = modelSize.get(url);
     if (browser) { try { await browser.unload(); } catch { /* ignore */ } browser = null; }
     $('load').disabled = true; setBusy(true);
     const bar = $('loadBar'), text = $('loadText');
@@ -1066,7 +1125,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         show(`downloading ${mb(loaded)} / ${mb(total)} MB \u00b7 ${pctDone.toFixed(0)}%${rate ? ` \u00b7 ${(rate / 1e6).toFixed(0)} MB/s` : ''}${left}`, pctDone);
       }, (phase) => {
         if (phase === 'runtime') show('fetching the in-browser runtime\u2026', null);
-        else if (phase === 'download') show('starting download (cached models skip this)\u2026', 0);
+        else if (phase === 'download') show(`starting download${size ? ` of ${gb(size)}` : ''} (cached models skip this)\u2026`, 0);
         else if (phase === 'load') show('loading the model into memory\u2026', null);
         else if (phase === 'ready') show(`loaded in ${fmtS((performance.now() - t0) / 1000)}`, 100);
       });
@@ -1330,13 +1389,14 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // bookmarks and headless checks. `branch=<step>:<rank>` (repeatable, rank is
   // 1-based in the top-K) forks the first run after it finishes.
   const q = new URLSearchParams(location.search);
-  for (const k of ['base', 'prompt', 'n_predict', 'n_probs', 'temperature', 'top_k', 'top_p', 'min_p', 'seed']) {
+  for (const k of ['base', 'prompt', 'n_predict', 'n_probs', 'temperature', 'top_k', 'top_p', 'min_p', 'seed', 'closed_p']) {
     if (q.has(k)) $(k).value = q.get(k);
   }
+  if (q.has('closed_p')) $('closed_p').oninput();
   if (q.has('chat')) $('mode').value = q.get('chat') === '1' ? 'chat' : 'raw';
   if (q.has('post')) $('post').checked = q.get('post') === '1';
   if (q.get('advanced') === '1') $('adv').click();
-  if (q.get('compare') === '1') $('cmp').click();
+  if (q.has('compare') && (q.get('compare') === '1') !== cmpOn()) $('cmp').click();   // on by default; compare=0 turns it off
   $('tempOut').value = $('temperature').value;
   if (q.has('think')) { $('think').checked = q.get('think') === '1'; $('think').onchange(); }
   if (LOCAL && q.has('engine')) { $('engine').value = q.get('engine'); $('engine').onchange(); }
