@@ -1,6 +1,6 @@
 # llpeek
 
-Large Language Peek, pronounced "peek".
+Large Language Peek
 
 llpeek shows what a local LLM considered at each step of a generation. For every
 token it produced, you see the top candidates and how the probability was split
