@@ -66,7 +66,7 @@
 </header>
 
 <a class="shot" href="screenshot-dark.png"><img src="thumb-dark.png" alt="llpeek showing a Sankey of candidate tokens per step for the prompt 'The capital of France is', two runs branched where the model considered ' located' and ' France', and compare tracks below lining up the last branch with the first run"></a>
-<p class="caption">Two runs of "The capital of France is". At step 4 the model picked " Paris" but had also considered " Lyon"; clicking that gray node started the orange run, which shows what the model would have written next.</p>
+<p class="caption">Three runs of "The capital of France is". At step 4 the model picked " a" but had put more weight on " located"; clicking that gray node started the orange run. The green run branches at step 7 on " France", and the tracks below line it up with the first run: which tokens match, how much the model hesitated, and how far the path probability drifts.</p>
 
 <h2>How to read it</h2>
 <p>A language model does not write words. At every step it scores every token in its vocabulary, a token being a word or a piece of one, and a sampler picks one. llpeek draws that step as a column.</p>

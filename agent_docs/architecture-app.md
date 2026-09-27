@@ -170,6 +170,8 @@ block: `H` (column height), `NODE_W`, `PITCH` (column spacing), `GAP`, `STUB`.
 | ribbon to the next column       | the sampled node fans out to the full height of the next column, because the next distribution is conditional on it |
 | fading stub                     | a branch not taken; the data holds nothing beyond it               |
 | node order                      | probability desc, so a sampled node low in its column means the sampler picked a low-ranked token |
+| fill opacity of the sampled node and its ribbon | hesitation, not probability (`emphasis`): 0.3 when the top candidate is near 1, full strength once it is under 40%, so sure stretches recede and deliberation stands out. Quiet columns stay at 0.35 |
+| fine dotted outline (`rect.offtop`, `--ink-2` at 0.7, 1 px) | the sampled token was not the top candidate (`rank !== 0`): where randomness changed the text. Its tooltip names the top pick and its probability and says the sampler drew this one at the run's randomness, or that the top pick was blocked (`<think>` with thinking off). Not drawn on collapsed strips; selection uses a solid outline |
 
 Only sampled and forked nodes have real flows. Everything else is a stub because
 llama-server only returns the path it generated. Clicking a stub forks a branch.
@@ -279,7 +281,7 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Query string: any control id as a parameter prefills it (`base`, `prompt`,
   `n_predict`, `n_probs`, `temperature`, `top_k`, `top_p`, `min_p`, `seed`,
   `closed_p`; `chat=1` selects assistant mode, `think=1`, `post=1`,
-  `advanced=1`, `compare=1` opens the compare view; `engine=browser` plus
+  `advanced=1`, `compare=0` hides the compare view, which is on by default; `engine=browser` plus
   optional `model=<url>` loads a model first); `run=1` starts a run on load; `branch=<step>:<rank>` or
   `branch=<step>:<token text>` (repeatable) then forks the first run at that
   global step taking the rank-th unchosen candidate, or the candidate whose

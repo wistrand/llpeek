@@ -133,7 +133,8 @@
   #chart rect.cand:hover { stroke: var(--ink); }
   #chart rect.node { stroke: var(--surface); stroke-width: 1px; cursor: pointer; }
   #chart rect.hit { fill: transparent; cursor: pointer; }
-  #chart .col.sel rect.chosen { stroke: var(--ink); stroke-width: 1.5px; }
+  #chart rect.offtop { stroke: var(--ink-2); stroke-width: 1px; stroke-dasharray: 2 2; stroke-opacity: 0.7; }   /* sampled below the top pick: where randomness bit */
+  #chart .col.sel rect.chosen { stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: none; }
   #tip { position: fixed; pointer-events: none; display: none; background: var(--surface); color: var(--ink);
          border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font-size: 12px;
          box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 10; max-width: 320px; }
@@ -569,6 +570,10 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // symbols (newline, parenthesis, comma, quote, markdown stars), or one whose
   // options were almost all whitespace. Punctuation of the trace, not a decision.
   const isQuiet = (step) => !isOpen(step) && (/^[\s\p{P}\p{S}]+$/u.test(step.token) || wsMass(step) >= CLOSED_P);
+  // Visual weight of a step is its hesitation, not its probability: a sure step
+  // (top candidate near 1) is drawn faint, so the eye lands where the model
+  // deliberated. 0.3 at certainty, full strength once the top pick is under 40%.
+  const emphasis = (step) => 0.3 + 0.7 * Math.min(1, (1 - (step.candidates[0]?.prob ?? 0)) / 0.6);
   // Text for the output line: quiet whitespace collapses to nothing, a leading
   // space is dropped (the column gap separates tokens), other whitespace is visible.
   const pieceText = (step) => step.text ?? step.token;
@@ -718,7 +723,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         // collapsed: one small cell per sampled token, opacity by probability
         run.steps.forEach((step, i) => {
           const x = xs[run.start + i];
-          const rect = el('rect', { x, y: MINI_TOP, width: NODE_W, height: MINI_H, rx: 2, fill: color(run), 'fill-opacity': isQuiet(step) ? 0.2 : 0.25 + 0.75 * step.prob, class: 'node mini' }, lane);
+          const rect = el('rect', { x, y: MINI_TOP, width: NODE_W, height: MINI_H, rx: 2, fill: color(run), 'fill-opacity': isQuiet(step) ? 0.2 : emphasis(step), class: 'node mini' }, lane);
           rect._info = { run, step, row: { ...step, kind: 'chosen' }, g: run.start + i, child: null };
         });
         drawLine(run, lane, xs.map((x) => x + NODE_W + 4), MINI_TOP + MINI_H, 1);
@@ -740,7 +745,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         }
       }
       run.steps.forEach((step, i) => {
-        const g = run.start + i, x = xs[g], w = colCur[g], open = isOpen(step), quiet = isQuiet(step), rows = layout(step);
+        const g = run.start + i, x = xs[g], w = colCur[g], open = isOpen(step), quiet = isQuiet(step), rows = layout(step), emph = emphasis(step);
         const xNext = xs[g + 1], stub = Math.min(STUB, Math.max(6, w - NODE_W - 4));
         for (const r of rows) { r.y0 = top + (r.y0 - TOP) * f; r.y1 = top + (r.y1 - TOP) * f; r.h *= f; }
         const col = el('g', { class: 'col' + (isSel(run, i) ? ' sel' : ''), opacity: 1 }, lane);
@@ -761,7 +766,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
           const h = Math.max(0, r.h - GAP * f);
           const child = r.kind === 'cand' && runs.find((b) => b.parent === run && b.forkStep === g && b.forced.id === r.id);
           if (r.kind === 'chosen' && i + 1 < run.steps.length) {
-            el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, xNext, yOff + top, yOff + top + colH), fill: soft(run), 'fill-opacity': quiet ? 0.45 : 1 }, links);
+            el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, xNext, yOff + top, yOff + top + colH), fill: soft(run), 'fill-opacity': quiet ? 0.45 : emph }, links);
           } else if (child) {
             const ci = runs.indexOf(child), cg = laneGeom(child), cy = offs[ci];
             const [b0, b1] = cg.f === 0 ? [cy + MINI_TOP, cy + MINI_TOP + MINI_H] : [cy + cg.top, cy + cg.top + cg.colH];
@@ -771,7 +776,9 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
             el('path', { d: ribbon(x + NODE_W, yOff + r.y0, yOff + r.y1, x + NODE_W + stub, yOff + r.y0, yOff + r.y1), fill: `url(#${grad})` }, links);
           }
           const fill = r.kind === 'chosen' ? color(run) : child ? color(child) : r.kind === 'cand' ? 'var(--cand)' : 'url(#hatch)';
-          const rect = el('rect', { x, y: r.y0, width: NODE_W, height: h, rx: 2, fill, class: 'node ' + r.kind + (quiet ? ' quiet' : '') }, col);
+          const offtop = r.kind === 'chosen' && step.rank !== 0;
+          const rect = el('rect', { x, y: r.y0, width: NODE_W, height: h, rx: 2, fill, class: 'node ' + r.kind + (quiet ? ' quiet' : '') + (offtop ? ' offtop' : ''),
+            ...(r.kind === 'chosen' && !quiet ? { 'fill-opacity': emph } : {}) }, col);
           rect._info = { run, step, row: r, g, child };
           // closed column: only the sampled token, without a percentage (the node says it)
           // Node labels only in open columns; closed columns are read from the output line.
@@ -1021,6 +1028,17 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     };
     const tech = (r) => adv ? ` <span class="m">id ${r.id}, logprob ${r.logprob.toFixed(3)}</span>` : '';
     const rankWord = (rk) => rk === 0 ? 'its top pick' : rk < 0 ? 'outside the candidates shown' : `its number ${rk + 1} pick`;
+    // A sampled token below the top pick carries the dotted outline; say what
+    // happened: randomness drew it, or the top pick was blocked (thinking off).
+    const offTop = () => {
+      const top = step.candidates[0];
+      if (row.kind !== 'chosen' || step.rank === 0 || !top) return '';
+      const blocked = (run.params.logit_bias ?? []).some(([t]) => t === top.id || t === top.token);
+      const why = blocked
+        ? `${esc(JSON.stringify(top.token))} at ${pct(top.prob)} was the model's top pick, but it is blocked because thinking is off, so the sampler drew this instead`
+        : `the model's top pick was ${esc(JSON.stringify(top.token))} at ${pct(top.prob)}; at randomness ${run.params.temperature} the sampler drew this one instead${step.rank < 0 ? ', from beyond the candidates shown' : ''}`;
+      return `<br><span class="m">Dotted outline: ${why}. The text changed here.</span>`;
+    };
     if (row.kind === 'post') {
       tip.innerHTML = `<b>${esc(JSON.stringify(row.token))}</b><br>${pct(row.prob)} chance after the sampler's filters` +
         ` <span class="m">(${step.post.top.length} token${step.post.top.length === 1 ? '' : 's'} left at step ${g})</span>`;
@@ -1033,7 +1051,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       : `<b>${esc(JSON.stringify(row.token))}</b>${tech(row)}<br>` +
         `the model gave this a <b>${pct(row.prob)}</b> chance<br>` +
         (row.kind === 'chosen'
-          ? `<span class="m">picked at step ${g} in run ${run.n}, ${rankWord(step.rank)}${adv ? `; path logprob ${cum.toFixed(2)}` : ''}</span>`
+          ? `<span class="m">picked at step ${g} in run ${run.n}, ${rankWord(step.rank)}${adv ? `; path logprob ${cum.toFixed(2)}` : ''}</span>` + offTop()
           : child ? `<span class="m">step ${g}, ${rankWord(row.rank)}; explored as run ${child.n}</span>`
                   : `<span class="m">step ${g}, ${rankWord(row.rank)}, not picked. Click to see what would have followed.</span>`) +
         postLine(row.id);

@@ -24,6 +24,10 @@ you can read.
 How to read the chart: each column is one generated token. Node height is
 probability. The colored node is the token that was sampled, gray nodes are
 candidates that were not, and the hatched node is everything outside the top-K.
+Color strength is hesitation: a step the model was sure of is drawn faint, a
+step it deliberated over is drawn strong. A dashed outline marks a sampled
+token that was not the model's top pick, which is where randomness changed
+the text.
 The ribbon carries the sampled token into the next step. The fading stubs mark
 the candidates that were not picked. Click one to branch from there.
 

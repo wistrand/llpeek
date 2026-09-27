@@ -126,6 +126,9 @@ with three lanes.
 - [x] "Other" bucket computed over the candidates shown (2026-09-27), so a
       column with a beyond-top-K sample sums to 1.
 - [x] Closed-column threshold adjustable under advanced (`closed_p`, 2026-09-27).
+- [x] Emphasis by hesitation (2026-09-27): sampled nodes and ribbons fade with
+      certainty; a dashed outline marks picks below the top candidate. The
+      geometry is unchanged, only the ink weight.
 
 **Verify:** `deno task headless "<app>?run=1&engine=server&base=http://localhost:8089&prompt=The%20capital%20of%20France%20is&n_predict=8&seed=3&temperature=1.0&branch=4:1&compare=1" 90 "document.querySelectorAll('#chart .cmp rect').length + ' | ' + document.getElementById('compare').innerText"`
 prints a rect count above zero and a summary starting "From step 4". `deno task shot`
