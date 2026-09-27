@@ -160,6 +160,7 @@ A token is a word or a piece of one.</p>
 
 <form id="f" onsubmit="return false">
   <textarea id="prompt" placeholder="Type something for the model to continue, or a question to answer. Ctrl+Enter runs it." spellcheck="false">The capital of France is</textarea>
+  <p id="promptNote" class="warn hidden">The prompt ends with a space. The space usually belongs to the next token, so a model rarely sees one here and the first step will look more hesitant than it is. Remove it unless that is what you want to test.</p>
   <div class="bar">
     <button id="run" class="primary" title="Ctrl+Enter">Run</button>
     <button id="stop" disabled title="Escape">Stop</button>
@@ -528,6 +529,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   });
   const vis = (t) => t.replace(/ /g, '·').replace(/\n/g, '↵').replace(/\t/g, '⇥');
   const pct = (p) => p >= 0.1 ? `${(p * 100).toFixed(0)}%` : p >= 0.01 ? `${(p * 100).toFixed(1)}%` : `${(p * 100).toFixed(2)}%`;
+  // Surprisal, -log2 p, in bits: adds up along a path and shares a unit with the entropy track.
+  const bitsOf = (p) => p > 0 ? (-Math.log2(p)).toFixed(1) : '\u221e';
   const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const el = (name, attrs, parent) => {
     const e = document.createElementNS(NS, name);
@@ -558,6 +561,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // over lanes, so lanes stay aligned; they tween like lane heights do.
   let CLOSED_P = 0.85;
   const CLOSED_MIN = 26, OPEN_MIN = 72, OPEN_MAX = 150, PAD = 10, X0 = 16;
+  const promptNote = () => $('promptNote').classList.toggle('hidden', !/[ \t]$/.test($('prompt').value));
+  $('prompt').addEventListener('input', promptNote);
   $('closed_p').oninput = () => { const v = +$('closed_p').value; if (v >= 0 && v <= 1) { CLOSED_P = v; renderAll(); } };
   const measureCtx = document.createElement('canvas').getContext('2d');
   const textW = (t, bold) => { measureCtx.font = `${bold ? '600 ' : ''}11px system-ui, -apple-system, "Segoe UI", sans-serif`; return measureCtx.measureText(t).width; };
@@ -834,11 +839,11 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   function renderTable() {
     const adv = advanced();
     const rows = runs.flatMap((run) => run.steps.map((s, i) => `<tr class="${isSel(run, i) ? 'sel' : ''}" data-run="${run.n}" data-i="${i}">
-      <td class="n">${run.n}</td><td class="n">${run.start + i}</td><td>${esc(JSON.stringify(s.text))}</td><td class="n">${pct(s.prob)}</td>
+      <td class="n">${run.n}</td><td class="n">${run.start + i}</td><td>${esc(JSON.stringify(s.text))}</td><td class="n">${pct(s.prob)}</td><td class="n">${bitsOf(s.prob)}</td>
       <td class="n">${s.rank < 0 ? 'beyond' : s.rank + 1}</td><td class="n">${pct(s.remainder)}</td>
       ${adv ? `<td class="n">${s.logprob.toFixed(3)}</td><td class="n">${s.post ? pct(s.post.prob) + ' / ' + s.post.top.length : ''}</td>` : ''}
       <td>${s.candidates.map((c) => `${esc(vis(c.token))} ${pct(c.prob)}`).join(', ')}</td></tr>`)).join('');
-    tableWrap.innerHTML = `<table><thead><tr><th>run</th><th>step</th><th>token</th><th>chance</th><th>pick #</th><th>everything else</th>${adv ? '<th>logprob</th><th>after sampler / left</th>' : ''}<th>tokens considered</th></tr></thead><tbody>${rows}</tbody></table>`;
+    tableWrap.innerHTML = `<table><thead><tr><th>run</th><th>step</th><th>token</th><th>chance</th><th>surprise, bits</th><th>pick #</th><th>everything else</th>${adv ? '<th>logprob</th><th>after sampler / left</th>' : ''}<th>tokens considered</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   // ---- compare view: two runs, step by step, from where they diverge.
@@ -884,21 +889,35 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const pa = pathOf(a), pb = pathOf(b);
     let d = 0; while (d < pa.length && d < pb.length && pa[d].token === pb[d].token) d++;
     if (d >= pa.length || d >= pb.length) return { a, b, why: 'agree', n: Math.min(pa.length, pb.length) };
-    let cumA = 0, cumB = 0, same = 0, both = 0, hA = 0, hB = 0, hMax = 1;
-    const idsA = new Set(), idsB = new Set(), rows = [];
+    // Tokens in common after the split: the longest common subsequence of the
+    // two tails, so one inserted token does not turn every later position into a
+    // mismatch. matchedA/B hold the global steps that are part of it.
+    const [matchedA, matchedB] = lcs(pa.slice(d).map((e) => e.token), pb.slice(d).map((e) => e.token), d);
+    let cumA = 0, cumB = 0, hA = 0, hB = 0, hMax = 1;
+    const rows = [];
     for (let g = d; g < Math.max(pa.length, pb.length); g++) {
       const ea = pa[g], eb = pb[g];
       const HA = ea ? entropy(ea.dist) : null, HB = eb ? entropy(eb.dist) : null;
-      if (ea) { cumA += ea.logprob; idsA.add(ea.token); hA += HA; hMax = Math.max(hMax, HA); }
-      if (eb) { cumB += eb.logprob; idsB.add(eb.token); hB += HB; hMax = Math.max(hMax, HB); }
-      const eq = !!(ea && eb && ea.token === eb.token); if (ea && eb) { both++; if (eq) same++; }
-      rows.push({ g, ea, eb, eq, HA, HB, cumA: ea ? cumA : null, cumB: eb ? cumB : null });
+      if (ea) { cumA += ea.logprob; hA += HA; hMax = Math.max(hMax, HA); }
+      if (eb) { cumB += eb.logprob; hB += HB; hMax = Math.max(hMax, HB); }
+      rows.push({ g, ea, eb, inA: matchedA.has(g), inB: matchedB.has(g), HA, HB, cumA: ea ? cumA : null, cumB: eb ? cumB : null });
     }
     const nA = pa.length - d, nB = pb.length - d, n = Math.min(nA, nB);
-    const shared = [...idsA].filter((i) => idsB.has(i)).length, union = new Set([...idsA, ...idsB]).size;
     // Path logprob over the same number of steps, so a longer run is not penalised.
     const fairA = pa.slice(d, d + n).reduce((t, e) => t + e.logprob, 0), fairB = pb.slice(d, d + n).reduce((t, e) => t + e.logprob, 0);
-    return { a, b, d, pa, pb, rows, same, both, shared, union, hA: hA / nA, hB: hB / nB, hMax, n, fairA, fairB, cumMin: Math.min(cumA, cumB, -1) };
+    return { a, b, d, pa, pb, rows, common: matchedA.size, nA, nB, hA: hA / nA, hB: hB / nB, hMax, n, fairA, fairB, cumMin: Math.min(cumA, cumB, -1) };
+  }
+  // Longest common subsequence of two token arrays; returns the matched global
+  // steps of each side (offset by `base`). O(n*m), fine for a few hundred steps.
+  function lcs(xs, ys, base) {
+    const n = xs.length, m = ys.length, L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = xs[i] === ys[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const A = new Set(), B = new Set();
+    for (let i = 0, j = 0; i < n && j < m;) {
+      if (xs[i] === ys[j]) { A.add(base + i); B.add(base + j); i++; j++; }
+      else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
+    }
+    return [A, B];
   }
   const rt = (r) => `<span style="color: ${color(r)}">run ${r.n}</span>`;
   const bits = (h) => h == null ? '' : h.toFixed(2);
@@ -914,16 +933,18 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     else if (c.why === 'agree') body = c.n ? `<p class="muted">${rt(a)} and ${rt(b)} agree on every token so far (${c.n} steps).</p>` : '<p class="muted">Nothing to line up yet.</p>';
     else {
       const ratio = Math.exp(Math.abs(c.fairB - c.fairA)), less = c.fairB < c.fairA ? b : a;
+      const spt = (lp) => (-lp / Math.LN2 / c.n).toFixed(1);   // mean surprisal per token, bits, over the equal window
       body = `<p>From step ${c.d}, where ${rt(a)} picked ${esc(JSON.stringify(c.pa[c.d].token))} and ${rt(b)} picked ${esc(JSON.stringify(c.pb[c.d].token))}: ` +
-        `${c.same} of ${c.both} positions hold the same token, and ${c.shared} of ${c.union} distinct tokens appear in both. ` +
+        `${c.common} token${c.common === 1 ? '' : 's'} in common, in order, out of ${c.nA} in ${rt(a)} and ${c.nB} in ${rt(b)}. ` +
         `Hesitation averaged ${bits(c.hA)} bits per step in ${rt(a)} and ${bits(c.hB)} bits in ${rt(b)}. ` +
-        `Over the first ${c.n} steps after the split the model gave ${rt(a)} a path logprob of ${c.fairA.toFixed(2)} and ${rt(b)} ${c.fairB.toFixed(2)}` +
-        (ratio >= 1.05 ? `, so the path of ${rt(less)} was ${ratio < 10 ? ratio.toFixed(1) : ratio < 1e6 ? Math.round(ratio).toLocaleString('en-US') : ratio.toExponential(1)} times less likely.` : ', about the same.') + '</p>';
+        `Over the first ${c.n} steps after the split the model gave ${rt(a)} a path logprob of ${c.fairA.toFixed(2)} (${spt(c.fairA)} bits of surprise per token) and ${rt(b)} ${c.fairB.toFixed(2)} (${spt(c.fairB)} bits)` +
+        (ratio >= 1.05 ? `, so the path of ${rt(less)} was ${ratio < 10 ? ratio.toFixed(1) : ratio < 1e6 ? Math.round(ratio).toLocaleString('en-US') : ratio.toExponential(1)} times less likely.` : ', about the same.') +
+        ` <span class="muted">Likelier is not better: likelihood favours generic and repetitive text.</span></p>`;
       if (advanced()) {
-        const tok = (e, r, eq) => e ? `<td class="tok${eq ? ' same' : ''}"${eq ? '' : ` style="color: ${color(r)}"`}>${esc(vis(e.token))}</td>` : '<td class="muted">(ended)</td>';
-        const rows = c.rows.map((r) => `<tr><td class="n">${r.g}</td>${tok(r.ea, a, r.eq)}${tok(r.eb, b, r.eq)}<td class="n">${bits(r.HA)}</td><td class="n">${bits(r.HB)}</td><td class="n">${r.HA != null && r.HB != null ? sgn(r.HB - r.HA) : ''}</td>` +
+        const tok = (e, r, inCommon) => e ? `<td class="tok${inCommon ? ' same' : ''}"${inCommon ? '' : ` style="color: ${color(r)}"`}>${esc(vis(e.token))}</td>` : '<td class="muted">(ended)</td>';
+        const rows = c.rows.map((r) => `<tr><td class="n">${r.g}</td>${tok(r.ea, a, r.inA)}${tok(r.eb, b, r.inB)}<td class="n">${bits(r.HA)}</td><td class="n">${bits(r.HB)}</td><td class="n">${r.HA != null && r.HB != null ? sgn(r.HB - r.HA) : ''}</td>` +
           `<td class="n">${r.cumA != null ? r.cumA.toFixed(2) : ''}</td><td class="n">${r.cumB != null ? r.cumB.toFixed(2) : ''}</td><td class="n">${r.cumA != null && r.cumB != null ? sgn(r.cumB - r.cumA) : ''}</td></tr>`);
-        body += `<table><thead><tr><th>step</th><th>${rt(a)}</th><th>${rt(b)}</th><th>bits ${rt(a)}</th><th>bits ${rt(b)}</th><th>change</th><th>logprob ${rt(a)}</th><th>logprob ${rt(b)}</th><th>difference</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+        body += `<table><thead><tr><th>step</th><th>${rt(a)}</th><th>${rt(b)}</th><th>bits ${rt(a)}</th><th>bits ${rt(b)}</th><th>difference</th><th>logprob ${rt(a)}</th><th>logprob ${rt(b)}</th><th>difference</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
       }
     }
     // Rebuild the selects only when the run list or the pair changed, so an open
@@ -959,17 +980,16 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const mid = (x) => xs[x] + NODE_W / 2;
     const head = (y, text) => { const t = el('text', { x: X0, y: y + 12, class: 'head' }, g); t.textContent = text; return y + CMP.head; };
     let y = 6;
-    y = head(y, `compare run ${a.n} with run ${b.n} from step ${d}: same token?`);
+    y = head(y, `compare run ${a.n} with run ${b.n} from step ${d}: tokens in common (gray) or only in one run (colored)`);
+    const hh = CMP.match / 2;
     for (const r of rows) {
       const x = xs[r.g]; if (x == null) continue;
-      if (!(r.ea && r.eb)) continue;   // only one run reaches this step: nothing to match
-      const cell = el('g', {}, g);
-      if (r.eq) el('rect', { x, y, width: 2 * NODE_W, height: CMP.match, rx: 2, fill: 'var(--cand)', class: 'mini' }, cell);
-      else {
-        el('rect', { x, y, width: NODE_W, height: CMP.match, rx: 1, fill: ca, class: 'mini' }, cell);
-        el('rect', { x: x + NODE_W, y, width: NODE_W, height: CMP.match, rx: 1, fill: cb, class: 'mini' }, cell);
-      }
-      el('title', {}, cell).textContent = r.eq ? `step ${r.g}: both picked ${JSON.stringify(r.ea.token)}` : `step ${r.g}: run ${a.n} picked ${JSON.stringify(r.ea.token)}, run ${b.n} picked ${JSON.stringify(r.eb.token)}`;
+      const cell = (e, run, col, inCommon, dy) => {
+        if (!e) return;
+        const rect = el('rect', { x, y: y + dy, width: 2 * NODE_W, height: hh - 1, rx: 1, fill: inCommon ? 'var(--cand)' : col, class: 'mini' }, g);
+        el('title', {}, rect).textContent = `step ${r.g}, run ${run.n}: ${JSON.stringify(e.token)}${inCommon ? ', also in the other run' : ', only here'}`;
+      };
+      cell(r.ea, a, ca, r.inA, 0); cell(r.eb, b, cb, r.inB, hh);
     }
     y += CMP.match + CMP.gap;
     y = head(y, `hesitation at each step, bits (taller is less sure)`);
@@ -1049,7 +1069,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     tip.innerHTML = row.kind === 'other'
       ? `<b>step ${g}</b><br>${pct(row.prob)} spread over everything beyond the ${step.candidates.length} tokens shown`
       : `<b>${esc(JSON.stringify(row.token))}</b>${tech(row)}<br>` +
-        `the model gave this a <b>${pct(row.prob)}</b> chance<br>` +
+        `the model gave this a <b>${pct(row.prob)}</b> chance <span class="m">(${bitsOf(row.prob)} bits of surprise)</span><br>` +
         (row.kind === 'chosen'
           ? `<span class="m">picked at step ${g} in run ${run.n}, ${rankWord(step.rank)}${adv ? `; path logprob ${cum.toFixed(2)}` : ''}</span>` + offTop()
           : child ? `<span class="m">step ${g}, ${rankWord(row.rank)}; explored as run ${child.n}</span>`
@@ -1236,7 +1256,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       const why = final?.stop_type === 'limit' || steps.length >= run.params.n_predict ? 'reached the length limit'
         : final?.stop_type ? 'the model chose to stop' : 'the stream ended early';
       const mean = pct(Math.exp(cum / Math.max(1, steps.length)));
-      setStatus(`Run ${run.n} done: ${steps.length} tokens in ${sec.toFixed(1)} s, ${why}. On average the model was ${mean} sure of each token it picked.` +
+      const meanBits = steps.length ? (-cum / Math.LN2 / steps.length).toFixed(1) : '0';
+      setStatus(`Run ${run.n} done: ${steps.length} tokens in ${sec.toFixed(1)} s, ${why}. On average the model gave each picked token a ${mean} chance (${meanBits} bits of surprise per token).` +
         (advanced() ? ` [${(steps.length / sec).toFixed(1)} tok/s, path logprob ${cum.toFixed(2)}, stop_type ${final?.stop_type}]` : ''));
     } catch (e) {
       setStatus(e.name === 'AbortError' ? `Run ${run.n} stopped after ${run.steps.length} tokens` : `error: ${e.message}`);
@@ -1411,6 +1432,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     if (q.has(k)) $(k).value = q.get(k);
   }
   if (q.has('closed_p')) $('closed_p').oninput();
+  promptNote();
   if (q.has('chat')) $('mode').value = q.get('chat') === '1' ? 'chat' : 'raw';
   if (q.has('post')) $('post').checked = q.get('post') === '1';
   if (q.get('advanced') === '1') $('adv').click();

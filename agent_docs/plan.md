@@ -126,6 +126,11 @@ with three lanes.
 - [x] "Other" bucket computed over the candidates shown (2026-09-27), so a
       column with a beyond-top-K sample sums to 1.
 - [x] Closed-column threshold adjustable under advanced (`closed_p`, 2026-09-27).
+- [x] Research-review fixes (2026-09-27): surprisal in bits next to every
+      percentage (tooltip, table, status line, compare summary); token match by
+      longest common subsequence instead of position; "likelier is not better"
+      caveat with mean surprisal per token in the compare summary; a warning
+      when the prompt ends in a space.
 - [x] Emphasis by hesitation (2026-09-27): sampled nodes and ribbons fade with
       certainty; a dashed outline marks picks below the top candidate. The
       geometry is unchanged, only the ink weight.
@@ -133,6 +138,84 @@ with three lanes.
 **Verify:** `deno task headless "<app>?run=1&engine=server&base=http://localhost:8089&prompt=The%20capital%20of%20France%20is&n_predict=8&seed=3&temperature=1.0&branch=4:1&compare=1" 90 "document.querySelectorAll('#chart .cmp rect').length + ' | ' + document.getElementById('compare').innerText"`
 prints a rect count above zero and a summary starting "From step 4". `deno task shot`
 with the same URL shows the three tracks under the lanes, aligned to the columns.
+
+### Phase 5: resampling from a step (planned 2026-09-27)
+
+Goal: turn a branch from an anecdote into a measurement. One branch is one
+draw; N draws from the same point show how much the continuation depends on
+the token chosen there versus on later randomness (Bigelow et al. 2024,
+Forking Paths: a few positions decide the ending, most do not).
+
+Decisions:
+
+- **What is redrawn.** "Resample from step g" continues from the prefix up to
+  and including step g-1 and lets the sampler redraw step g and everything
+  after it. So the fork token itself varies, which is what makes step g's
+  importance measurable. (Continuing N times after a fixed token is the other
+  question; it is the same machinery with the prefix one token longer, and can
+  be a checkbox later.)
+- **Seeds.** Sample k uses `seed + k` (k = 1..N). llama-server and wllama
+  restart the random stream per request, so distinct seeds give distinct
+  draws and the set is reproducible. At randomness 0 every draw is identical:
+  disable the action and say why.
+- **Samples are not lanes.** `MAX_RUNS` is 8 with one categorical color each.
+  A sample set is one object, `{ run, g, n, seed, params, samples: [{ seed,
+  steps, final }] }`, generated through the same `generate()` path (mixed
+  prompt on the server, `prefixPrompt` text in the browser), streamed one
+  sample at a time with "sample 3 of 8" in the status line. One set at a time;
+  a new resample replaces it, and it is dropped when its run is extended or
+  the page starts over.
+- **View: a count Sankey under the lanes.** Same geometry as a lane, but a
+  node is (step, token) with height = count / N and a link between consecutive
+  steps carries the number of samples that took that pair. Columns sum to N,
+  no "other" node (every sample is drawn). This is a true Sankey, not a trie:
+  samples that reach the same token at the same step merge. Node labels
+  `token k/N`; the lane label names the source run, the step, N and the seeds.
+  Drawn in the source run's color at reduced strength, so it reads as a
+  spread of that run.
+- **Readouts** in a panel under the tracks, same pattern as compare:
+  1. At step g: the drawn frequencies next to the model's stated
+     probabilities for each token (`n_probs`, and the post-sampling
+     distribution when "show sampler filtering" is on). This is an empirical
+     check of the sampler, and shows the filters' effect directly.
+  2. Distinct continuations: the samples grouped by exact final text, largest
+     group first, with counts. Outcome entropy over the groups in bits.
+  3. Agreement curve: for each step after g, the share of samples that still
+     share the majority prefix. Where it collapses is where the paths fork.
+  4. Mean surprisal per token per sample, so a group of generic continuations
+     is visibly cheaper than an unusual one.
+- **Controls.** A toolbar button "resample from the selected step ×N",
+  enabled when a sampled node is selected and randomness > 0; N in advanced
+  (default 8, max 32). Query string `resample=<step>:<n>` for headless runs
+  and screenshots. The tooltip's "Click to see what would have followed"
+  becomes "Click for one continuation from here; resample for the spread".
+- **Cost.** N requests of `n_predict` tokens. 8 × 14 tokens on the 2B model at
+  35 tok/s is about 4 s on the server, 10 s in the browser. Sequential
+  requests; the server's parallel slots would only matter for larger N.
+- **Not in this phase.** Resampling at every position (the full Forking Paths
+  sweep, N × T requests) and grouping continuations by meaning rather than
+  exact text. Both build on the sample set object; the sweep is a loop over g
+  with a heatmap of outcome change per step, the grouping needs an embedding
+  or entailment model (see semantic divergence under Phase 4).
+
+Steps:
+
+1. Data: `resample(run, g, n)` producing the sample set, reusing
+   `branch()`'s prefix construction without a forced token; abort and status
+   handling as for runs; `params` inherited from the run like a branch.
+2. Layout: `layoutColumns()` includes the set's steps so columns align; the
+   set gets a lane slot after the runs, before the compare tracks.
+3. Render: count Sankey from the set's per-step token counts and pair counts.
+4. Panel: the four readouts. Group by final text first; the agreement curve
+   is a by-product of the majority prefix.
+5. Controls, query string, tooltip wording, docs, screenshots.
+
+**Verify:** `resample=4:8` on the reference prompt at `seed=3, temperature=1.0`
+produces 8 samples whose step-4 frequencies roughly track the post-sampling
+distribution of the root run's step 4, the headless readout lists the
+distinct continuations with counts summing to 8, and the same URL twice gives
+the same groups. At `temperature=0` the button is disabled and the panel
+explains why.
 
 ## Open questions
 

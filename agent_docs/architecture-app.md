@@ -250,8 +250,13 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Text strip: one row per run, prompt in muted ink, then each step's `text`.
   It scrolls, is selectable, and each token is hoverable (tooltip) and
   clickable (select the step, expand its lane, scroll the chart to its column).
-- Tooltip (`#tip`, fixed position): token, id, p, logprob, rank, cumulative path
-  logprob for sampled nodes. Nodes thinner than 12 px get an invisible enlarged hit rect.
+- Tooltip (`#tip`, fixed position): token, id, p with its surprisal in bits
+  (`bitsOf`, -log2 p), logprob, rank, cumulative path logprob for sampled nodes.
+  The table has a "surprise, bits" column and the status line reports the mean
+  surprisal per picked token.
+- `#promptNote` warns when the prompt ends in a space or tab: the space usually
+  belongs to the next token, so the first step looks more hesitant than it is
+  (the token-healing problem). Checked on input and after query-string prefill. Nodes thinner than 12 px get an invisible enlarged hit rect.
 - Click a sampled node to select its step (outlined in the strip and the table); click again to clear.
 - Click a gray candidate to branch from it. Click a candidate already branched to select that lane.
 - Legend lists runs with their settings and fork origin; click to select a lane.
@@ -266,15 +271,19 @@ add new motion by extending the tween state, so one loop owns all motion.
   id, so runs on different models still line up where they agree). `render()` then appends
   three tracks under the lanes inside the Sankey SVG (`drawCompare`, height
   `CMP_H`), so they share the column x positions and scroll with the runs, in
-  the two run colors: same token or not (one gray cell, or a cell split in the
-  two colors), hesitation per step as bars of Shannon entropy in bits of the
-  reported distribution (top-K plus the tail as one bucket, so a lower bound),
-  and the accumulated path logprob since the split as one line per run with the
-  gap shaded. The panel under the chart (`#compare`, `renderCompare()`) holds
-  the two run selects and a summary sentence: positional token matches, shared
-  distinct tokens, mean hesitation, and path logprobs over the same number of
-  steps so a longer run is not penalised, with the likelihood ratio. In
-  advanced mode the panel adds the numbers as a table. Default pair: the
+  the two run colors: tokens in common, as two half-height rows (one per run,
+  a cell per step, gray when the token is part of the longest common
+  subsequence of the two tails (`lcs`), run-colored when only that run has it,
+  so an inserted token does not turn every later step into a mismatch),
+  hesitation per step as bars of Shannon entropy in bits of the reported
+  distribution (top-K plus the tail as one bucket, so a lower bound), and the
+  accumulated path logprob since the split as one line per run with the gap
+  shaded. The panel under the chart (`#compare`, `renderCompare()`) holds the
+  two run selects and a summary sentence: tokens in common (the LCS length) out
+  of each tail's length, mean hesitation, path logprobs over the same number of
+  steps so a longer run is not penalised, each with its mean surprisal per
+  token in bits, the likelihood ratio, and the caveat that likelier is not
+  better. In advanced mode the panel adds the numbers as a table. Default pair: the
   selected branch and its parent, else the latest branch and its parent, else
   the first two runs; the selects override it. Semantic divergence (embedding
   distance between the two continuations) is not implemented; see plan.md.

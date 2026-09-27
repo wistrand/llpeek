@@ -68,8 +68,10 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
 - Hover a node for details, click a gray candidate to branch from it, click a
   run's label to fold it, or switch to "as a table". With two runs on screen,
   the compare tracks under the lanes line them up from the step where they
-  part: which tokens match, how much the model hesitated at each step, and how
-  the path probability drifts apart ("compare runs" toggles them).
+  part: which tokens the two share, how much the model hesitated at each
+  step, and how the path probability drifts apart ("compare runs" toggles
+  them). Probabilities come with their surprisal in bits wherever a tooltip
+  or table shows them.
   Sampling knobs, the server address, the threshold that decides when a
   column opens, and the technical readouts are under "advanced".
 
