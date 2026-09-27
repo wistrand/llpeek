@@ -35,7 +35,8 @@ ws.onmessage = (e) => {
 };
 const send = (method: string, params = {}) =>
   new Promise<any>((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
-const evaluate = async (expression: string) => (await send("Runtime.evaluate", { expression, returnByValue: true })).result?.result?.value;
+// awaitPromise: an async expression (e.g. one that clicks and waits) resolves before printing.
+const evaluate = async (expression: string) => (await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
 await send("Page.enable"); await send("Runtime.enable");
 await send("Page.navigate", { url: pageUrl });
 let text = "";

@@ -207,11 +207,42 @@ drawn under the count Sankey rather than in the panel; readouts 3 and 4 are
 the track and a column in the continuation table. Per-sample columns take
 part in `layoutColumns()` so the lane aligns with the runs.
 
+Revised after a statistics review (2026-09-27):
+
+- The redrawn step is compared with the sampler's own distribution, fetched
+  with one `post_sampling_probs` request per set, not with the raw `n_probs`
+  probabilities: the raw 32% for " located" was really 42.5% after top-p,
+  min-p and temperature, and 32 direct draws with consecutive seeds gave 14,
+  so consecutive seeds do draw independently. The table shows expected counts
+  and a Wilson 95% interval per share, marks a sampler probability outside it,
+  and says that step g's draws only check the sampler.
+- The fork track is the size of the largest group of samples sharing the same
+  prefix at each depth (`largestBranch`), a size that ties cannot change,
+  instead of a majority path with order-dependent tie breaks.
+- Outcome groups are taken over a horizon (first 1, 2, 4 or 8 tokens, the
+  first sentence, or the whole text; a select in the panel, default 2),
+  because exact text saturates at log2 N almost immediately. On the reference
+  prompt at N=8, one token gives 3 distinct groups, two give 5 against 7 with
+  the token kept, four give 8 and 8. The panel says so.
+- The kept-token set is built by the same action (`keep_too`, on by default):
+  N more draws from step g+1 with the run's token at g fixed. The panel
+  reports both spreads and their entropy difference as what the token at g
+  accounts for, which is the Forking Paths comparison.
+- Samples carry a `done` flag; stopping keeps every finished sample even when
+  its stream ended without a stop event. The trailing-space warning is hidden
+  in chat mode. The compare view's common-subsequence match is cached per
+  pair and lengths, since `render()` runs every animation frame.
+
 **Verify:** `resample=4:8` on the reference prompt at `seed=3, temperature=1.0,
-n_predict=10` gives 8 samples, " located" drawn 6 of 8 against a stated 32%,
-8 distinct continuations, identical on a second run (checked 2026-09-27
-against the 2B Qwen on 8089; the status line ends "Resampling done: ..."). At
-`temperature=0` the status says randomness is 0 and the button stays disabled.
+n_predict=10` gives two sets of 8 (the second keeping " a"); " located" is
+drawn 6 of 8 with a sampler probability of 43% inside the 41% to 93%
+interval; over the first 2 tokens the redraw set has 5 distinct groups and
+the kept set 7; identical on a second run (checked 2026-09-27 against the 2B
+Qwen on 8089; the status line starts "Resampling done"). At `temperature=0`
+the status says randomness is 0 and the button stays disabled. Preemption: an
+async headless expression that clicks a node, starts a resample of 4 while
+`resample=4:32` is running, ends with "Resampling done ... 4 times and 4 more"
+and four track headings.
 
 ## Open questions
 

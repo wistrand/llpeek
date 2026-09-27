@@ -262,26 +262,39 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Legend lists runs with their settings and fork origin; click to select a lane.
 - "table view" swaps the chart for a table with one row per step and the full
   candidate list. It is the accessibility fallback for the chart.
-- Resampling (`resample(run, g, n)`, state `sampleSet`, one set at a time,
-  dropped when the runs reset): N continuations from the prefix before step g
-  of a run, seeds `seed+1..seed+N`, generated one after another through
-  `llpeek.generate` with the run's params. `sampleColumns()` counts tokens per
-  step and consecutive pairs; `drawSamples()` draws a count Sankey under the
-  lanes (node height count/N, links carry pair counts, no "other" node) with
-  a fork track below it (`majorityShare`: the share of samples still on the
-  majority path). The source column gets a dashed `rect.src` marker and a
-  ribbon from the previous token (`set.origin`, recorded during the lane
-  pass) into the first sample column. `renderResample()` fills `#resample`:
-  the redrawn step's draws against the model's stated probability (and the
-  post-filter one when the sampler view is on), and the continuations grouped
-  by exact text with counts, outcome entropy in bits and mean surprisal per
-  token. Actions: the toolbar button (names its target when enabled), the
-  in-place `text.action` label at a selected column, and the `r` key; all
-  need a selected sampled token in a run with randomness above 0. N is
-  clamped to 2..32. Stopping mid-set keeps the finished samples and sets the
-  set's N to their count (an empty set is dropped). Query string
-  `resample=<step>:<n>` acts on the first run after any branches. The final
-  status starts "Resampling done" so the headless tools see the page as idle.
+- Resampling (`resample(run, g, n)`, state `sampleSet`, one action's sets at
+  a time, dropped when the runs reset): a set (`makeSet`) is N continuations
+  from the prefix before global step g of a run, seeds `seed+1..seed+N`,
+  generated one after another (`drawSet`) through `llpeek.generate` with the
+  run's params; each sample gets `done` when its generation returns. The
+  action first fetches the sampler's own distribution at g with one
+  `post_sampling_probs` request (`fetchSetPost`, `set.post`), then draws the
+  "redraw" set, then, with `keep_too` on, the "keep" set (`set.keep`: from
+  g+1 with the run's token at g fixed, `set.kept`). `sampleColumns()` counts
+  tokens per step and consecutive pairs; `drawSamples()` draws each set as a
+  count Sankey under the lanes (node height count/N, links carry pair counts,
+  no "other" node) with a fork track below it (`largestBranch`: the size of
+  the largest group sharing the same prefix at each depth). The first redrawn
+  column of each set gets a dashed `rect.src` marker and a ribbon from the
+  token before it (`set.origin`, recorded during the lane pass). Both sets
+  take part in `layoutColumns()`. `renderResample()` fills `#resamplePanel`
+  (the toolbar button is `#resample`): a horizon select (`groupMode`: first
+  1, 2, 4 or 8 tokens, first sentence, whole text); the redrawn step's draws
+  with expected count, Wilson 95% interval, the sampler's probability (marked
+  when outside the interval) and the raw one, plus the note that these draws
+  only check the sampler; the two spreads over the horizon (`outcomeGroups`:
+  distinct groups, entropy in bits, largest-group share) and their entropy
+  difference as what the token at g accounts for; and the groups of each set
+  with counts and mean surprisal per token. Actions: the toolbar button
+  (names its target when enabled), the in-place `text.action` label at a
+  selected column, and the `r` key; all need a selected sampled token in a
+  run with randomness above 0, and all work while something is generating:
+  the action aborts it first (the same preemption as a branch click, which
+  also stops a running resample). N is clamped to 2..32. Stopping keeps the
+  finished samples of each set and makes their count its N (an empty set is
+  dropped). Query string `resample=<step>:<n>` acts on the first run after
+  any branches. The final status starts "Resampling done" so the headless
+  tools see the page as idle.
 - "compare runs" is on by default (`?compare=0` turns it off) and shows nothing
   until there are two runs. It compares two runs that share a prompt.
   `compareData()` builds it: `pathOf(run)` rebuilds a run's full token path by

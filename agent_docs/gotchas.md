@@ -67,6 +67,14 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
   `n_probs` logprobs. Set them explicitly in requests so the UI's display of "what
   was sampled" is reproducible; use `seed` for repeatability.
 
+- **Two elements shared `id="resample"` for a while** (the toolbar button and
+  the panel), so `$('resample')` returned the button and the panel's tables
+  were written into it. `document.getElementById` returns the first match
+  silently; grep the ids before adding one. The panel is `resamplePanel`.
+- **`Runtime.evaluate` does not await a promise unless asked.** An async
+  expression came back as `[object Object]` until `headless.ts` passed
+  `awaitPromise: true` (2026-09-27). With it, an expression can click, wait
+  and read the result in one run.
 - **The headless tools decide "idle" from the status line.** `scripts/headless.ts`
   and `scripts/shot.ts` wait until Stop is disabled and the status matches
   done, error, stopped or ready (plus a few fixed phrases). A new final status

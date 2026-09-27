@@ -73,10 +73,13 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
   them). Probabilities come with their surprisal in bits wherever a tooltip
   or table shows them.
 - One branch is one draw. Select a sampled token and press "resample" (or
-  `r`) to redraw that step and everything after it N times with different
-  seeds. The draws appear as a count Sankey under the runs, with a track
+  `r`; it interrupts whatever is generating) to redraw that step and everything after it N times with different
+  seeds, and then N more keeping that token and redrawing from the next
+  step. Both appear as count Sankeys under the runs, each with a track
   showing where the continuations fork, and a panel with the drawn tokens
-  against the model's stated probabilities and the distinct continuations.
+  against the sampler's own probabilities (with what N draws can resolve),
+  the continuations grouped over a horizon you choose, and the difference in
+  spread between the two sets, which is how much that token decided the text.
   Sampling knobs, the server address, the threshold that decides when a
   column opens, and the technical readouts are under "advanced".
 

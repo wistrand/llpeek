@@ -29,7 +29,7 @@ the final message so the user can carry it over; do not edit `../llav`.
 | `docs/app.html`      | the whole app: first `<script>` is the data layer (`llpeek`), the rest is the UI |
 | `deno.json`          | tasks: `llama`, `serve`, `pages`, `dev`, `check`, `shot`, `headless`, `model` |
 | `scripts/serve.ts`   | static server for `docs/` with COOP/COEP headers (no deps)              |
-| `scripts/headless.ts`| open a URL in headless Chrome, print `#out` once it says DONE/ERROR      |
+| `scripts/headless.ts`| open a URL in headless Chrome: print `#out` once it says DONE/ERROR, or wait for the app to settle and print a JS expression (async ones are awaited) |
 | `scripts/models.ts`  | list/download known GGUFs into `~/models` (resume, size check)           |
 | `scripts/wllama-probe.html` | probe page for the in-browser engine's API behavior                |
 | `scripts/check.mjs`  | headless check of the data layer against a running llama-server         |
@@ -57,7 +57,7 @@ deno task pages            # same, but emulating GitHub Pages: no server engine,
 deno task dev              # both
 deno task check [base]     # data-layer check against a running llama-server (default :8089)
 deno task shot [url] [dir] # light+dark screenshots after a run; default url http://localhost:8000/app.html?run=1, dir docs/
-deno task headless <url> [secs] [js-expr]  # headless Chrome: print a probe page's #out, or, with an expression, wait for the app to settle and print its value (e.g. legend titles, status)
+deno task headless <url> [secs] [js-expr]  # headless Chrome: print a probe page's #out, or, with an expression, wait for the app to settle and print its value (e.g. legend titles, status); an async expression is awaited, so it can click and wait
 
 # raw probe
 curl -s localhost:8089/completion -d '{"prompt":"Hello","n_predict":3,"n_probs":5}' | python3 -m json.tool
