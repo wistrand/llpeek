@@ -106,3 +106,7 @@ side-by-side runs, extending runs by raising the length, chat-template mode with
 thinking on or off, a sampler view showing what survived top-k / top-p / min-p /
 temperature, collapsible lanes, table view, a compare view for two runs after
 they diverge, resampling a step N times, light and dark mode. See `agent_docs/plan.md`.
+
+## License
+
+MIT, see `LICENSE`.
