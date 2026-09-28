@@ -294,9 +294,14 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Zoom (`zoom`, 0.4 to 4): the SVG keeps its viewBox in chart units and
   scales through its width and height (`setZoom`), so geometry, keys and hit
   testing are untouched and text scales with the chart. The toolbar's minus
-  and plus buttons step by 1.25, Ctrl+wheel (and trackpad pinch) over the
-  chart zooms around the pointer, `+`/`=` and `-` keys work outside inputs,
-  `?zoom=` presets it, and scroll-to-column multiplies by the zoom.
+  and plus buttons step by 1.25; Ctrl+wheel (and trackpad pinch) or Alt+wheel
+  over the chart zooms around the pointer in both axes (the page scroll takes
+  the vertical part) with `preventDefault` so the browser does not zoom the
+  page; the "wheel zooms" checkbox (`#wheelZoom`, remembered in
+  `localStorage`, `?wheelzoom=1`) makes the plain wheel zoom too, for desktops
+  that swallow Ctrl+wheel; sideways wheel still scrolls the lanes; `+`/`=`
+  and `-` keys work outside inputs; `?zoom=` presets it; scroll-to-column
+  multiplies by the zoom.
 - "table view" swaps the chart for a table with one row per step and the full
   candidate list. It is the accessibility fallback for the chart.
 - Resampling (`resample(run, g, n)`, state `sampleSet`, one action's sets at

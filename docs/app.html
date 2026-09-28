@@ -244,7 +244,7 @@
   <button id="resample" disabled title="Select a sampled token first; randomness must be above 0">resample from the selected step</button>
   <button id="cmp" aria-pressed="true" title="Compare two runs from the step where they diverge">compare runs</button>
   <button id="view" aria-pressed="false">as a table</button>
-  <span class="zoom"><button id="zoomOut" title="Zoom out (Ctrl+scroll over the chart, or -)">&minus;</button><output id="zoomVal" title="Chart zoom">100%</output><button id="zoomIn" title="Zoom in (Ctrl+scroll over the chart, or +)">+</button></span>
+  <span class="zoom"><button id="zoomOut" title="Zoom out (Ctrl+scroll over the chart, or -)">&minus;</button><output id="zoomVal" title="Chart zoom">100%</output><button id="zoomIn" title="Zoom in (Ctrl+scroll over the chart, or +)">+</button><label class="inline" title="Plain mouse wheel over the chart zooms it instead of scrolling the page. Ctrl+wheel and Alt+wheel always zoom."><input id="wheelZoom" type="checkbox"> wheel zooms</label></span>
 </div>
 <p id="hint" class="muted">Press Run. Each column will show the tokens the model weighed at that step: the tallest is the likeliest, the colored one is what it picked. Wide columns are where it hesitated.</p>
 <div id="chart"></div>
@@ -744,15 +744,18 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // its width and height, so geometry, hit testing and keys are untouched.
   let zoom = 1;
   const ZOOM_MIN = 0.4, ZOOM_MAX = 4;
-  function setZoom(z, anchorX) {
+  function setZoom(z, anchorX, anchorY) {
     z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
     if (z === zoom) return;
-    // keep the chart point under anchorX (a clientX) where it is
-    const rect = chart.getBoundingClientRect(), ax = (anchorX ?? rect.left + rect.width / 2) - rect.left;
-    const cx = (chart.scrollLeft + ax) / zoom;
+    // Keep the chart point under the anchor (client coordinates) where it is:
+    // horizontally through the chart's own scroll, vertically through the page's.
+    const rect = chart.getBoundingClientRect();
+    const ax = (anchorX ?? rect.left + rect.width / 2) - rect.left, ay = (anchorY ?? rect.top + rect.height / 2) - rect.top;
+    const cx = (chart.scrollLeft + ax) / zoom, cy = ay / zoom;
     zoom = z; $('zoomVal').value = `${Math.round(zoom * 100)}%`;
     render();
     chart.scrollLeft = cx * zoom - ax;
+    if (anchorY != null) window.scrollBy(0, cy * zoom - ay);
   }
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1379,11 +1382,17 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   $('resample').onclick = () => { if (!canResample()) return; const n = Math.max(2, Math.min(32, +$('n_samples').value || 8)); resample(selected.run, selected.run.start + selected.index, n); };
   $('zoomIn').onclick = () => setZoom(zoom * 1.25);
   $('zoomOut').onclick = () => setZoom(zoom / 1.25);
+  // Ctrl+wheel (and trackpad pinch) and Alt+wheel zoom the chart; preventDefault
+  // keeps the browser from zooming the page. Some desktops take Ctrl+wheel
+  // before the page sees it, so "wheel zooms" makes the plain wheel zoom too.
   chart.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey && !e.metaKey) return;   // plain scrolling stays scrolling; Ctrl+wheel and trackpad pinch zoom
-    e.preventDefault();
-    setZoom(zoom * Math.exp(-e.deltaY * 0.002), e.clientX);
+    if (!(e.ctrlKey || e.metaKey || e.altKey || $('wheelZoom').checked)) return;
+    if (e.shiftKey || (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey)) return;   // sideways: scroll the lanes
+    e.preventDefault(); e.stopPropagation();
+    setZoom(zoom * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
   }, { passive: false });
+  $('wheelZoom').onchange = () => { try { localStorage.setItem('llpeek.wheelZoom', $('wheelZoom').checked ? '1' : '0'); } catch { /* storage may be unavailable */ } };
+  try { $('wheelZoom').checked = localStorage.getItem('llpeek.wheelZoom') === '1'; } catch { /* ignore */ }
   $('cmp').onclick = () => {
     const show = compareEl.classList.toggle('hidden') === false;
     $('cmp').setAttribute('aria-pressed', show);
@@ -1839,6 +1848,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   }
   if (q.has('closed_p')) $('closed_p').oninput();
   if (q.has('zoom')) { zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +q.get('zoom') || 1)); $('zoomVal').value = `${Math.round(zoom * 100)}%`; }
+  if (q.has('wheelzoom')) $('wheelZoom').checked = q.get('wheelzoom') === '1';
   if (q.has('chat')) $('mode').value = q.get('chat') === '1' ? 'chat' : 'raw';
   if (q.has('post')) $('post').checked = q.get('post') === '1';
   if (q.get('advanced') === '1') $('adv').click();
