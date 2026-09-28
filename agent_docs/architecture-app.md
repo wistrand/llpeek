@@ -197,9 +197,20 @@ over ribbons.
 ## Rendering loop
 
 `generate` calls `onStep` per token. The UI coalesces with `requestAnimationFrame`
-and re-renders the whole SVG (`render()` clears and rebuilds). At a few hundred
-steps this is cheap; if it stops being cheap, append columns instead of
-rebuilding. The chart auto-scrolls to the newest column while streaming.
+and calls `render()`, which describes the whole SVG every time but updates
+the DOM incrementally: `el(name, attrs, parent)` reuses the element that had
+the same key under the same parent in the previous render (`live`, a map of
+full keys to elements), sets only the attributes that changed, moves the
+element only if its position changed, and `endRender()` removes whatever was
+not described. Keys are explicit where identity matters for hover and clicks
+(`lane<n>`, `col<g>`, `n<id>` nodes, `rb`/`rc`/`rs` ribbons, `ln<g>` output
+words, `samp<id>`, `cmp`) and positional (tag plus index among the parent's
+unkeyed children) elsewhere. `setText` writes text only when it changed. A
+streaming token therefore adds one column's elements (about 45 DOM additions
+per token, moves included) instead of rebuilding some 1,600 nodes, so the
+element under the pointer survives and tooltips and clicks keep working
+while tokens arrive. The chart auto-scrolls to the newest column while
+streaming. The output strip and the legend are still rebuilt per token.
 
 ## Generation feedback
 

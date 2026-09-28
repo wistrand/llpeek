@@ -80,6 +80,13 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
   done, error, stopped or ready (plus a few fixed phrases). A new final status
   without one of those words makes every headless check time out, which is
   how the first resampling status was caught (2026-09-27).
+- **Pixel-diffing screenshots across server sessions is noisy.** Two
+  screenshots of the reference URL taken an hour apart differed in about
+  2,500 pixels although the sampled text was identical: several percentages
+  were off by one point (inferred: llama-server's logits vary slightly with
+  slot and batch state, not a renderer change). Two runs minutes apart on the
+  same server differed by about 100 pixels (the timing digit in the status
+  line). Compare against a screenshot taken in the same session.
 - **Headless Chrome `--screenshot` with `--virtual-time-budget` does not wait for
   an SSE stream.** It captured the page mid-generation. `scripts/shot.ts` drives
   Chrome over the DevTools protocol and polls the status line for `done` instead.

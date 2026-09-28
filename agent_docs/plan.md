@@ -255,13 +255,14 @@ and four track headings.
   2024 with no editor response. llpeek needs pre-sampling top-K per token, so
   wllama stays the browser engine. Revisit if #20 moves.
 
-- **Rendering cost.** `render()` rebuilds the SVG on every step. Measured
-  2026-09-27 in headless Chrome, three lanes: 240 columns (7.5k SVG nodes)
-  rebuild in about 2 ms of script time, 600 columns (19k nodes) in about 6 ms,
-  against a 28 ms per-token budget at 35 tok/s and 16 ms per animation frame.
-  Layout and paint after the swap are not in those numbers. Not worth
-  optimizing until traces get several times longer; the cheap step then is to
-  coalesce streamed tokens into one render per animation frame.
+- **Rendering cost.** Resolved 2026-09-28: `render()` now reconciles the
+  SVG by key instead of rebuilding it (see architecture-app.md, Rendering
+  loop). The reason was interaction, not speed: a full rebuild per token
+  replaced the element under the pointer, so hovering and clicking during
+  generation misfired. Measured churn while streaming: about 45 DOM
+  additions per token against a tree of 1,600 nodes. The 2026-09-27 numbers
+  for a full rebuild (2 ms at 240 columns, 6 ms at 600) still bound the cost
+  of a render that changes everything, such as a lane tween.
 - **Model picker for llama-server.** It loads one model per process. Either
   restart the server from the UI (needs a middle tier) or document manual
   restarts. The browser engine has its own picker.
