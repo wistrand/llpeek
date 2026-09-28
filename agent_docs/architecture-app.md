@@ -241,10 +241,18 @@ add new motion by extending the tween state, so one loop owns all motion.
   show full settings, tooltips add ids and logprobs, the status line appends
   tok/s and path logprob, and the table gains logprob and sampler columns.
   Keep this one switch; do not add per-feature "show technical" toggles.
+- Engine choice: `detectEngine()` runs at startup (and when the server URL
+  changes) and picks the server when one answers, else the browser. A choice
+  made by hand in "run on" (`engineChosen`) is kept: a startup detection that
+  finishes later does not override it, and the status line then describes
+  the chosen engine (the loaded browser model's info, or "pick a model"; for
+  the server, a fresh check that says which model it runs). The idle phrases
+  in `scripts/headless.ts` include these status lines.
 - Controls: prompt textarea, Run (primary; Ctrl+Enter or Cmd+Enter), Stop
   (Escape), randomness slider, length, mode, think first, run on. Choosing the
   browser engine reveals a model row (curated public URLs, or a URL) with a load
-  button, a size note (a warning above 1 GB) and progress. Advanced: server
+  button, a size note (a warning above 1 GB, or "already in this browser"
+  when wllama's cache holds the file) and progress. Advanced: server
   URL, candidates per step (n_probs), top_k, top_p, min_p, seed, the
   closed-column threshold, "add a run to compare", "show sampler filtering".
 - Text strip: one row per run, prompt in muted ink, then each step's `text`.

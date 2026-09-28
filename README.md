@@ -62,7 +62,8 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
   default is the same 2B Qwen from Hugging Face, downloaded once and cached by
   the browser; the list also has SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B and
   SmolLM3 3B, and any CORS-enabled GGUF URL under 2 GB works. A note next to
-  the button gives the download size before you start. The published site
+  the button gives the download size before you start, or says the model is
+  already in the browser's cache. The published site
   offers only this engine; the server option appears when the page is served
   by `deno task serve`, which also looks for the server when the page opens.
 - Hover a node for details, click a gray candidate to branch from it, click a

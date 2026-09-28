@@ -36,7 +36,11 @@ Model URLs: any CORS-enabled URL. The UI offers a curated list (`MODELS` in the
 UI block: Qwen3.5 2B in two quants, SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B,
 SmolLM3 3B Q4, stories260K, each with its byte size for the note next to the
 load button; a typed URL is sized with a HEAD request, which the Hugging Face
-CDN answers with CORS; 1 GB and up is shown as a warning) and a free URL field.
+CDN answers with CORS; 1 GB and up is shown as a warning, unless the model is
+already cached: `llpeek.browserCached()` imports wllama's JS module (not the
+WASM) and asks `new ModelManager().getModels()` for the validated cached
+URLs, once per page, plus each URL loaded since; the note then says it loads
+from the cache) and a free URL field.
 The string-form
 `logit_bias [["<think>", false]]` is only sent when the model's chat template
 mentions `<think>`. Reason: llama-server (also the copy inside wllama) tokenizes

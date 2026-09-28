@@ -43,6 +43,8 @@
   body { margin: 0; padding: 16px; background: var(--page); color: var(--ink);
          font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   h1 { font-size: 18px; margin: 0 0 4px; }
+  h1 a { color: inherit; text-decoration: none; }
+  h1 a:hover { text-decoration: underline; }
   .intro { margin: 0 0 12px; color: var(--ink-2); max-width: 70ch; }
   .range { display: flex; align-items: center; gap: 6px; }
   .range input { width: 110px; }
@@ -159,7 +161,7 @@
 </style>
 </head>
 <body>
-<h1>llpeek</h1>
+<h1><a href="./" title="About llpeek">llpeek</a></h1>
 <p class="intro">Watch a language model write one token at a time: how sure it was, and what else it considered.
 A token is a word or a piece of one.</p>
 
@@ -433,7 +435,16 @@ const llpeek = (() => {
     return { steps, final };
   }
 
-  return { health, reachable, props, tokenize, applyTemplate, completion, serverEngine, browserEngine, generate, stepFrom, postFrom, mergeText };
+  // URLs of the models wllama has cached in this browser (validated files
+  // only). Imports wllama's JS module, not the WASM, and returns an empty set
+  // when the cache cannot be read (private window, no storage, no network).
+  async function browserCached() {
+    try {
+      const { ModelManager } = await import(WLLAMA + 'index.js');
+      return new Set((await new ModelManager().getModels()).map((m) => m.url));
+    } catch { return new Set(); }
+  }
+  return { health, reachable, props, tokenize, applyTemplate, completion, serverEngine, browserEngine, browserCached, generate, stepFrom, postFrom, mergeText };
 })();
 
 if (typeof module !== 'undefined') module.exports = llpeek;
@@ -493,7 +504,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // before it starts. Known models carry their size; a typed URL gets a HEAD
   // request (Hugging Face answers it with CORS), else the size stays unknown.
   const BIG_MODEL = 1e9;
-  const gb = (b) => `${(b / 1e9).toFixed(1)} GB`;
+  const gb = (b) => b < 1e8 ? `${Math.max(1, Math.round(b / 1e6))} MB` : `${(b / 1e9).toFixed(1)} GB`;
   const modelSize = new Map(MODELS.map(([, url, bytes]) => [url, bytes]));
   const modelUrlValue = () => $('model').value === 'url' ? $('modelUrl').value.trim() : $('model').value;
   async function sizeOf(url) {
@@ -504,13 +515,14 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     } catch { /* no CORS, offline, or a bad URL: the download itself will report */ }
     return null;
   }
-  let noteSeq = 0;
+  let noteSeq = 0, cachedUrls = null;   // Set of URLs wllama already holds here; read once, extended after each load
   async function updateModelNote() {
     const url = modelUrlValue(), note = $('modelNote'), seq = ++noteSeq;
     note.textContent = ''; note.classList.remove('warn');
     if (!url) return;
-    const bytes = await sizeOf(url);
+    const [bytes] = await Promise.all([sizeOf(url), cachedUrls ?? llpeek.browserCached().then((s) => { cachedUrls = s; })]);
     if (seq !== noteSeq) return;   // the selection changed meanwhile
+    if (cachedUrls?.has(url)) { note.textContent = `Already in this browser${bytes != null ? ` (${gb(bytes)})` : ''}: no download, it loads from the cache.`; return; }
     if (bytes == null) { note.textContent = 'size unknown until the download starts'; return; }
     const big = bytes >= BIG_MODEL;
     note.classList.toggle('warn', big);
@@ -1415,6 +1427,16 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     $('browserRow').classList.toggle('hidden', !b);
     if (b && !$('model').options.length) fillModels();
   };
+  // A choice made by hand (not by detectEngine) is final for this page, and
+  // the status line must say which engine is current, not what was detected.
+  let engineChosen = false;
+  $('engine').addEventListener('change', async () => {
+    engineChosen = true;
+    if ($('engine').value === 'browser') {
+      if (browser) { try { setStatus(await browser.info()); } catch { setStatus('running in this browser'); } }
+      else setStatus('running in this browser: pick a model and press "load model"');
+    } else detectEngine('choice');
+  });
   async function loadModel() {
     if (ctrl) return;
     const url = modelUrlValue();
@@ -1449,6 +1471,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
         else if (phase === 'ready') show(`loaded in ${fmtS((performance.now() - t0) / 1000)}`, 100);
       });
       show(`loaded ${url.split('/').pop()} in ${fmtS((performance.now() - t0) / 1000)}`, 100);
+      (cachedUrls ??= new Set()).add(url); updateModelNote();
       setStatus(await browser.info());
     } catch (e) {
       $('loadInfo').classList.add('hidden'); setStatus(`error: ${e.message}`);
@@ -1468,10 +1491,14 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     setStatus(`looking for a llama-server at ${base}\u2026`);
     const ok = await llpeek.reachable(base);
     if (seq !== detectSeq || ctrl) return;
+    // While the check ran, the user may have picked the browser engine by hand: leave it.
+    if (reason === 'startup' && engineChosen) return;
     if (ok) {
       $('engine').value = 'server'; $('engine').onchange();
-      try { setStatus(`using the llama-server at ${base}: ${(await llpeek.props(base)).model_path?.split('/').pop() ?? 'model loaded'}`); }
-      catch { setStatus(`using the llama-server at ${base}`); }
+      try { setStatus(`running on the llama-server at ${base}, model ${(await llpeek.props(base)).model_path?.split('/').pop() ?? 'loaded'}`); }
+      catch { setStatus(`running on the llama-server at ${base}`); }
+    } else if (reason === 'choice') {
+      setStatus(`no llama-server answered at ${base}; start one, or set "run on" to this browser`);
     } else {
       $('engine').value = 'browser'; $('engine').onchange();
       setStatus(reason === 'url'

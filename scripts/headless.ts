@@ -46,7 +46,7 @@ while (Date.now() - t0 < timeout * 1000) {
   if (expr) {
     const busy = await evaluate("!!document.getElementById('stop') && !document.getElementById('stop').disabled");
     const status = (await evaluate("document.getElementById('status')?.textContent ?? ''")) ?? "";
-    if (!busy && /done|error|stopped|ready|Nothing to extend|using the llama-server|no llama-server|no local llama-server/i.test(status)) { text = String(await evaluate(expr)); break; }
+    if (!busy && /done|error|stopped|ready|Nothing to extend|running on the llama-server|running in this browser|no llama-server|no local llama-server/i.test(status)) { text = String(await evaluate(expr)); break; }
     continue;
   }
   text = (await evaluate("document.getElementById('out')?.textContent ?? ''")) ?? "";
