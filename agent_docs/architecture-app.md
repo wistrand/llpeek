@@ -241,6 +241,11 @@ add new motion by extending the tween state, so one loop owns all motion.
   show full settings, tooltips add ids and logprobs, the status line appends
   tok/s and path logprob, and the table gains logprob and sampler columns.
   Keep this one switch; do not add per-feature "show technical" toggles.
+- Run or "add a run" with the browser engine and no model loaded opens the
+  `#noModel` dialog (`askForModel`, a native `<dialog>` via `showModal`):
+  it names the selected model with its size note and offers "load it, then
+  run", which loads and then repeats the click, or "not now". Escape closes
+  it. Branches and resamples never hit it, since they reuse the run's engine.
 - A run keeps the engine it was made with (`run.engine`). Loading another
   browser model unloads the old wllama instance, which marks itself
   `unloaded`; `gone(run)` then refuses to branch, resample, extend or replay
@@ -254,8 +259,9 @@ add new motion by extending the tween state, so one loop owns all motion.
   the chosen engine (the loaded browser model's info, or "pick a model"; for
   the server, a fresh check that says which model it runs). The idle phrases
   in `scripts/headless.ts` include these status lines.
-- Controls: prompt textarea, Run (primary; Ctrl+Enter or Cmd+Enter), Stop
-  (Escape), randomness slider, length, mode, think first, run on. Choosing the
+- Controls: prompt textarea (17 px text, the same size as the output strip) with Run (primary; Ctrl+Enter or
+  Cmd+Enter) and Stop (Escape) stacked in a column to its right
+  (`.promptRow`, `.actions`), then the bar: randomness slider, length, mode, think first, run on. Choosing the
   browser engine reveals a model row (curated public URLs, or a URL) with a load
   button, a size note (a warning above 1 GB, or "already in this browser"
   when wllama's cache holds the file) and progress. Advanced: server

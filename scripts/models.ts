@@ -11,8 +11,8 @@ if (di >= 0) { dir = args[di + 1]; args.splice(di, 2); }
 dir = dir.replace(/\/$/, "");
 const HF = "https://huggingface.co";
 const KNOWN: Record<string, { url: string; note: string }> = {
-  "qwen3.5-2b":        { url: `${HF}/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf`, note: "2.1 GB, Q8_0, the project default; also the browser default" },
-  "qwen3.5-2b-q4":     { url: `${HF}/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf`, note: "1.4 GB, Q4_K_M, lighter" },
+  "qwen3.5-2b":        { url: `${HF}/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf`, note: "2.1 GB, Q8_0, the server default" },
+  "qwen3.5-2b-q4":     { url: `${HF}/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf`, note: "1.4 GB, Q4_K_M, the browser default" },
   "qwen3.5-4b":        { url: `${HF}/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve/main/Qwen_Qwen3.5-4B-Q8_0.gguf`, note: "4.6 GB, Q8_0" },
   "qwen3.5-4b-q4":     { url: `${HF}/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve/main/Qwen_Qwen3.5-4B-Q4_K_M.gguf`, note: "3.0 GB, Q4_K_M" },
   "smollm3":           { url: `${HF}/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q8_0.gguf`, note: "3.3 GB, Q8_0, thinking model with a system-prompt style template" },

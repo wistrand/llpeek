@@ -75,7 +75,12 @@
   label.mode { white-space: nowrap; }
   input, textarea, button { font: inherit; color: var(--ink); background: var(--surface);
          border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-width: 0; }
-  textarea { display: block; width: 100%; box-sizing: border-box; min-height: 70px; resize: vertical; }
+  textarea { display: block; width: 100%; box-sizing: border-box; min-height: 88px; resize: vertical; font-size: 17px; line-height: 1.4; padding: 8px 10px; }
+  .promptRow { display: flex; gap: 10px; align-items: stretch; }
+  .promptRow textarea { flex: 1; }
+  .actions { display: flex; flex-direction: column; gap: 6px; }
+  .actions button { min-width: 88px; }
+  .actions .primary { flex: 1; padding: 6px 22px; }
   button { cursor: pointer; }
   button.primary { background: var(--chosen); border-color: var(--chosen); color: #fff; font-weight: 600; padding: 6px 22px; }
   button.primary:disabled { opacity: 0.5; cursor: default; }
@@ -99,8 +104,8 @@
     #chart rect.next { opacity: 0.6; }
   }
   #text { margin: 8px 0; padding: 8px; background: var(--surface); border: 1px solid var(--grid);
-          border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 13px;
-          max-height: 200px; overflow: auto; user-select: text; }
+          border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 17px; line-height: 1.4;
+          max-height: 240px; overflow: auto; user-select: text; }
   #text:empty { display: none; }
   #text .t { cursor: pointer; border-radius: 2px; }
   #text .t:hover { background: var(--grid); }
@@ -158,19 +163,27 @@
   #resamplePanel select { font-size: 12px; }
   #resamplePanel td.tok { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
   .hidden { display: none; }
+  dialog { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 16px 18px; max-width: 34em; }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+  dialog h2 { font-size: 15px; margin: 0 0 8px; }
+  dialog p { margin: 6px 0; }
+  dialog .row { display: flex; gap: 8px; margin-top: 12px; }
 </style>
 </head>
 <body>
 <h1><a href="./" title="About llpeek">llpeek</a></h1>
-<p class="intro">Watch a language model write one token at a time: how sure it was, and what else it considered.
-A token is a word or a piece of one.</p>
+<p class="intro">Watch a language model write one token at a time: how sure it was, and what else it considered.</p>
 
 <form id="f" onsubmit="return false">
-  <textarea id="prompt" placeholder="Type something for the model to continue, or a question to answer. Ctrl+Enter runs it." spellcheck="false">The capital of France is</textarea>
+  <div class="promptRow">
+    <textarea id="prompt" placeholder="Type something for the model to continue, or a question to answer. Ctrl+Enter runs it." spellcheck="false">The capital of France is</textarea>
+    <div class="actions">
+      <button id="run" class="primary" title="Ctrl+Enter">Run</button>
+      <button id="stop" disabled title="Escape">Stop</button>
+    </div>
+  </div>
   <p id="promptNote" class="warn hidden">The prompt ends with a space. The space usually belongs to the next token, so a model rarely sees one here and the first step will look more hesitant than it is. Remove it unless that is what you want to test.</p>
   <div class="bar">
-    <button id="run" class="primary" title="Ctrl+Enter">Run</button>
-    <button id="stop" disabled title="Escape">Stop</button>
     <label title="0 = always take the most likely token. Higher = more surprising choices.">randomness
       <span class="range"><input id="temperature" type="range" min="0" max="2" step="0.1" value="0.8"><output id="tempOut">0.8</output></span>
     </label>
@@ -196,7 +209,7 @@ A token is a word or a piece of one.</p>
   <div id="browserRow" class="panel hidden">
     <label>model <select id="model"></select></label>
     <label id="modelUrlLabel" class="hidden">model URL <input id="modelUrl" placeholder="https://huggingface.co/<repo>/resolve/main/<file>.gguf" size="52"></label>
-    <button id="load">load model</button>
+    <button id="load" class="primary">load model</button>
     <span id="modelNote" class="muted"></span>
     <span id="loadInfo" class="hidden"><progress id="loadBar" max="100"></progress><span id="loadText" class="muted"></span></span>
   </div>
@@ -234,6 +247,12 @@ A token is a word or a piece of one.</p>
 <div id="tableWrap" class="hidden"></div>
 <div id="compare"></div>
 <div id="resamplePanel"></div>
+<dialog id="noModel">
+  <h2>Load a model first</h2>
+  <p>Running in this browser needs a model. Selected: <b id="noModelName"></b>. <span id="noModelNote" class="muted"></span></p>
+  <p class="muted">To use another one, close this and pick it under "run on: this browser".</p>
+  <div class="row"><button id="noModelLoad" class="primary">load it, then run</button><button id="noModelCancel">not now</button></div>
+</dialog>
 <div id="tip" role="tooltip"></div>
 
 <script>
@@ -492,8 +511,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // Public GGUFs that load in a browser (CORS-enabled, under the 2 GB single-file
   // limit). [label, url, bytes]; bytes from the CDN's content-length, 2026-09-27.
   const MODELS = [
-    ['Qwen3.5 2B Q8_0 (2.1 GB, same as the server default)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf', 2080140384],
-    ['Qwen3.5 2B Q4_K_M (1.4 GB, faster download)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf', 1396198496],
+    ['Qwen3.5 2B Q4_K_M (1.4 GB, default)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf', 1396198496],
+    ['Qwen3.5 2B Q8_0 (2.1 GB, the same file as the server default)', 'https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q8_0.gguf', 2080140384],
     ['SmolLM2 360M Instruct Q8_0 (0.4 GB, Hugging Face)', 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf', 386404992],
     ['Gemma 3 1B Instruct Q8_0 (1.1 GB, Google)', 'https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf', 1069306368],
     ['Llama 3.2 1B Instruct Q8_0 (1.3 GB, Meta)', 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf', 1321083008],
@@ -1737,8 +1756,23 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   }
   $('n_predict').addEventListener('change', () => { const n = +$('n_predict').value; if (n > 0 && runs.length) active = extendRuns(n); });
 
-  $('run').onclick = () => { if (ctrl) return; runs = []; selected = null; sampleSet = null; colCur = []; colTarget = []; active = startRun(newRun()); };
-  $('add').onclick = () => { if (ctrl) return; active = startRun(newRun()); };
+  // Run or add with the browser engine and no model loaded: ask, load, then do it.
+  const needsModel = () => $('engine').value === 'browser' && !browser;
+  function askForModel(then) {
+    const sel = $('model'), url = sel.value === 'url';
+    $('noModelName').textContent = url ? ($('modelUrl').value.trim().split('/').pop() || 'no URL entered yet') : (sel.selectedOptions[0]?.textContent ?? '');
+    $('noModelNote').textContent = $('modelNote').textContent;
+    $('noModelLoad').disabled = url && !$('modelUrl').value.trim();
+    $('noModelLoad').onclick = async () => { $('noModel').close(); if (await loadModel()) then(); };
+    $('noModelCancel').onclick = () => $('noModel').close();
+    $('noModel').showModal();
+  }
+  $('run').onclick = () => {
+    if (ctrl) return;
+    if (needsModel()) { askForModel(() => $('run').onclick()); return; }
+    runs = []; selected = null; sampleSet = null; colCur = []; colTarget = []; active = startRun(newRun());
+  };
+  $('add').onclick = () => { if (ctrl) return; if (needsModel()) { askForModel(() => $('add').onclick()); return; } active = startRun(newRun()); };
   $('stop').onclick = () => ctrl?.abort();
 
   // Prefill from the query string (?base=...&prompt=...&n_predict=..&run=1), for

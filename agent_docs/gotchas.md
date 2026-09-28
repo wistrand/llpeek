@@ -100,8 +100,8 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
   the first shard.
 - **Every headless Chrome run downloads the model again.** wllama's cache lives
   in the browser profile, and headless runs start fresh, so each
-  `deno task headless` or browser-engine `deno task shot` pulls 2 GB from
-  Hugging Face. Use `model=<stories260K url>` for cheap probes, and the 0.4 GB
+  `deno task headless` or browser-engine `deno task shot` pulls the default
+  model (1.4 GB) from Hugging Face. Use `model=<stories260K url>` for cheap probes, and the 0.4 GB
   SmolLM2 360M when the output has to make sense (both URLs in `MODELS`).
 - **Official `Qwen/*-GGUF` and `ggml-org/Qwen3.5-*` repos answer 401.** Use
   `bartowski/Qwen_Qwen3.5-2B-GGUF` or `unsloth/Qwen3.5-2B-GGUF`, both public.

@@ -246,6 +246,15 @@ and four track headings.
 
 ## Open questions
 
+- **Chrome's built-in model is not usable as an engine** (checked 2026-09-28).
+  The Prompt API (`LanguageModel`, Gemini Nano in Chrome 138+, Phi-4-mini in
+  Edge) returns text only: no logprobs, candidate tokens or logits, no seed,
+  chat sessions only, and on the web no sampling parameters beyond an
+  origin-trial `samplingMode` enum (extensions get `topK`/`temperature`).
+  The logprobs request is webmachinelearning/prompt-api#20, open since July
+  2024 with no editor response. llpeek needs pre-sampling top-K per token, so
+  wllama stays the browser engine. Revisit if #20 moves.
+
 - **Rendering cost.** `render()` rebuilds the SVG on every step. Measured
   2026-09-27 in headless Chrome, three lanes: 240 columns (7.5k SVG nodes)
   rebuild in about 2 ms of script time, 600 columns (19k nodes) in about 6 ms,

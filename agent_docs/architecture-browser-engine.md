@@ -48,9 +48,10 @@ a string entry and biases every resulting token, verified 2026-09-27 with
 `[[" Paris is", false]]` banning " Paris". On a model without a `<think>`
 token the string would ban the pieces "<", "think" and ">" instead. wllama
 3.6.1 has no tokenizer call in JS, so the template is the only cheap signal.
-Default: Hugging Face
-`bartowski/Qwen_Qwen3.5-2B-GGUF`, file `Qwen_Qwen3.5-2B-Q8_0.gguf` (2.08 GB,
-byte-identical to the local server default). Hugging Face `resolve` links 302 to
+Default (since 2026-09-28): Hugging Face `bartowski/Qwen_Qwen3.5-2B-GGUF`,
+file `Qwen_Qwen3.5-2B-Q4_K_M.gguf` (1.40 GB); the Q8_0 next to it (2.08 GB)
+is byte-identical to the local server default, so pick it when a browser run
+must match a server run: quantizations give different probabilities. Hugging Face `resolve` links 302 to
 a CDN; with a browser `Origin` header the redirect echoes the origin and the CDN
 answers `access-control-allow-origin: *` (verified from `http://localhost:8000`).
 Local files are deliberately not served: the page must work the same from any
