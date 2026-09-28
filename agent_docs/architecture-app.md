@@ -241,6 +241,12 @@ add new motion by extending the tween state, so one loop owns all motion.
   show full settings, tooltips add ids and logprobs, the status line appends
   tok/s and path logprob, and the table gains logprob and sampler columns.
   Keep this one switch; do not add per-feature "show technical" toggles.
+- A run keeps the engine it was made with (`run.engine`). Loading another
+  browser model unloads the old wllama instance, which marks itself
+  `unloaded`; `gone(run)` then refuses to branch, resample, extend or replay
+  such a run with a status message, and the resample button says why. While
+  a model is loading (`loading`), branching and resampling are refused too,
+  since the old engine is being torn down.
 - Engine choice: `detectEngine()` runs at startup (and when the server URL
   changes) and picks the server when one answers, else the browser. A choice
   made by hand in "run on" (`engineChosen`) is kept: a startup detection that

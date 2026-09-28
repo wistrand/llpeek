@@ -414,7 +414,7 @@ const llpeek = (() => {
           if (ch.finish_reason) yield { stop: true, stop_type: ch.finish_reason === 'length' ? 'limit' : ch.finish_reason, tokens_evaluated: c.usage?.prompt_tokens, timings: c.timings };
         }
       },
-      unload: () => w.exit(),
+      unload() { this.unloaded = true; return w.exit(); },   // runs made on it can no longer continue
     };
   }
 
@@ -515,12 +515,12 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     } catch { /* no CORS, offline, or a bad URL: the download itself will report */ }
     return null;
   }
-  let noteSeq = 0, cachedUrls = null;   // Set of URLs wllama already holds here; read once, extended after each load
+  let noteSeq = 0, cachedUrls = null, cachedLookup = null;   // Set of URLs wllama already holds here; read once, extended after each load
   async function updateModelNote() {
     const url = modelUrlValue(), note = $('modelNote'), seq = ++noteSeq;
     note.textContent = ''; note.classList.remove('warn');
     if (!url) return;
-    const [bytes] = await Promise.all([sizeOf(url), cachedUrls ?? llpeek.browserCached().then((s) => { cachedUrls = s; })]);
+    const [bytes] = await Promise.all([sizeOf(url), cachedUrls ?? (cachedLookup ??= llpeek.browserCached().then((s) => { cachedUrls = s; }))]);
     if (seq !== noteSeq) return;   // the selection changed meanwhile
     if (cachedUrls?.has(url)) { note.textContent = `Already in this browser${bytes != null ? ` (${gb(bytes)})` : ''}: no download, it loads from the cache.`; return; }
     if (bytes == null) { note.textContent = 'size unknown until the download starts'; return; }
@@ -1234,11 +1234,11 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   }
   // Allowed while something is generating: like a branch click, a new resample
   // aborts the current generation (or resampling) first and keeps what finished.
-  const canResample = () => selected && selected.index >= 0 && selected.run.params.temperature > 0;
+  const canResample = () => selected && selected.index >= 0 && selected.run.params.temperature > 0 && !loading && !gone(selected.run);
   function updateResampleButton() {
     const b = $('resample'); b.disabled = !canResample();
     b.textContent = canResample() ? `resample \u00d7${$('n_samples').value} from step ${selected.run.start + selected.index} of run ${selected.run.n}` : 'resample from the selected step';
-    b.title = !selected || selected.index < 0 ? 'Select a sampled token (click it) first'
+    b.title = loading ? 'Wait for the model to load' : selected && gone(selected.run) ? gone(selected.run) : !selected || selected.index < 0 ? 'Select a sampled token (click it) first'
       : !(selected.run.params.temperature > 0) ? 'Randomness is 0 in that run, so every draw would be identical'
       : `Draw ${$('n_samples').value} new continuations from step ${selected.run.start + selected.index}, redrawing that step too${$('keep_too').checked ? ', then as many keeping its token' : ''}${ctrl ? '. Stops the current generation first' : ''}`;
   }
@@ -1280,6 +1280,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   }
   const finishSet = (set) => { set.samples = set.samples.filter((smp) => smp.done); set.n = set.samples.length; set.generating = false; };
   function resample(run, g, n) {
+    if (gone(run)) { setStatus(gone(run)); return active; }
     const set = makeSet(run, g, n, null), at = run.steps[g - run.start];
     if ($('keep_too').checked && at && g + 1 <= run.start + run.steps.length) set.keep = makeSet(run, g + 1, n, { id: at.id, token: at.token });
     return (active = (async () => {
@@ -1437,10 +1438,15 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       else setStatus('running in this browser: pick a model and press "load model"');
     } else detectEngine('choice');
   });
+  let loading = false;   // a browser model is being loaded: runs on the old engine cannot continue
+  // A run keeps the engine (and model) it was made with. Once that browser
+  // model is replaced, the run can be read but not continued.
+  const gone = (run) => run.engine?.unloaded ? `Run ${run.n} was made with a model that is no longer loaded; press Run to start over with the current one` : null;
   async function loadModel() {
-    if (ctrl) return;
+    if (ctrl || loading) return;
     const url = modelUrlValue();
     if (!url) { setStatus('Enter a model URL'); return; }
+    loading = true; renderAll();
     const size = modelSize.get(url);
     if (browser) { try { await browser.unload(); } catch { /* ignore */ } browser = null; }
     $('load').disabled = true; setBusy(true);
@@ -1475,7 +1481,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       setStatus(await browser.info());
     } catch (e) {
       $('loadInfo').classList.add('hidden'); setStatus(`error: ${e.message}`);
-    } finally { $('load').disabled = false; setBusy(false); }
+    } finally { $('load').disabled = false; setBusy(false); loading = false; renderAll(); }
     return browser;
   }
   $('load').onclick = loadModel;
@@ -1622,6 +1628,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   });
   // Fork `parent` at global step g, forcing candidate `cand` instead of what was sampled.
   function branch(parent, g, cand) {
+    if (loading) { setStatus('Wait for the model to load before branching'); return active; }
+    if (gone(parent)) { setStatus(gone(parent)); return active; }
     const k = g - parent.start;                       // local index of the fork step
     const kept = parent.steps.slice(0, k);
     // A branch inherits the parent's params verbatim: same sampling, same seed,
@@ -1667,7 +1675,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   }
   async function ensurePost() {
     if (!$('post').checked || ctrl) return;
-    const todo = runs.filter((r) => r.steps.some((s) => !s.post));
+    const todo = runs.filter((r) => r.steps.some((s) => !s.post) && !gone(r));
     if (!todo.length) return;
     ctrl = new AbortController(); setBusy(true);
     $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
@@ -1690,8 +1698,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // limit, from its exact token sequence (prompt + prefix + generated ids).
   async function extendRuns(n) {
     if (ctrl) return;
-    const todo = runs.filter((r) => r.steps.length < n && (!r.final || r.final.stop_type === 'limit'));
-    if (!todo.length) { if (runs.length) setStatus(`Nothing to extend: runs already have ${n} tokens or ended on their own`); return; }
+    const todo = runs.filter((r) => r.steps.length < n && (!r.final || r.final.stop_type === 'limit') && !gone(r));
+    if (!todo.length) { if (runs.length) setStatus(runs.some(gone) ? gone(runs.find(gone)) : `Nothing to extend: runs already have ${n} tokens or ended on their own`); return; }
     ctrl = new AbortController(); setBusy(true);
     $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
     let cur = null;
