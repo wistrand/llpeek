@@ -68,7 +68,8 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
   offers only this engine; the server option appears when the page is served
   by `deno task serve`, which also looks for the server when the page opens.
 - Hover a node for details, click a gray candidate to branch from it, click a
-  run's label to fold it, or switch to "as a table". With two runs on screen,
+  run's label to fold it, zoom the chart with the plus and minus buttons or
+  Ctrl+scroll, or switch to "as a table". With two runs on screen,
   the compare tracks under the lanes line them up from the step where they
   part: which tokens the two share, how much the model hesitated at each
   step, and how the path probability drifts apart ("compare runs" toggles

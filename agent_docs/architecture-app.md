@@ -291,6 +291,12 @@ add new motion by extending the tween state, so one loop owns all motion.
 - Click a sampled node to select its step (outlined in the strip and the table); click again to clear.
 - Click a gray candidate to branch from it. Click a candidate already branched to select that lane.
 - Legend lists runs with their settings and fork origin; click to select a lane.
+- Zoom (`zoom`, 0.4 to 4): the SVG keeps its viewBox in chart units and
+  scales through its width and height (`setZoom`), so geometry, keys and hit
+  testing are untouched and text scales with the chart. The toolbar's minus
+  and plus buttons step by 1.25, Ctrl+wheel (and trackpad pinch) over the
+  chart zooms around the pointer, `+`/`=` and `-` keys work outside inputs,
+  `?zoom=` presets it, and scroll-to-column multiplies by the zoom.
 - "table view" swaps the chart for a table with one row per step and the full
   candidate list. It is the accessibility fallback for the chart.
 - Resampling (`resample(run, g, n)`, state `sampleSet`, one action's sets at

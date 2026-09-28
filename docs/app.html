@@ -68,6 +68,8 @@
   #loadText { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
   .toolbar button { padding: 3px 8px; font-size: 12px; }
+  .zoom { display: inline-flex; align-items: center; gap: 4px; }
+  .zoom output { font-size: 12px; color: var(--ink-2); min-width: 3.5em; text-align: center; font-variant-numeric: tabular-nums; }
   label.inline { flex-direction: row; align-items: center; gap: 4px; }
   .legend .l-post::before { background: transparent; border: 1.5px solid var(--ink-2); box-sizing: border-box; }
   #chart rect.post { stroke: var(--surface); stroke-width: 1px; }
@@ -242,6 +244,7 @@
   <button id="resample" disabled title="Select a sampled token first; randomness must be above 0">resample from the selected step</button>
   <button id="cmp" aria-pressed="true" title="Compare two runs from the step where they diverge">compare runs</button>
   <button id="view" aria-pressed="false">as a table</button>
+  <span class="zoom"><button id="zoomOut" title="Zoom out (Ctrl+scroll over the chart, or -)">&minus;</button><output id="zoomVal" title="Chart zoom">100%</output><button id="zoomIn" title="Zoom in (Ctrl+scroll over the chart, or +)">+</button></span>
 </div>
 <p id="hint" class="muted">Press Run. Each column will show the tokens the model weighed at that step: the tallest is the likeliest, the colored one is what it picked. Wide columns are where it hesitated.</p>
 <div id="chart"></div>
@@ -737,6 +740,20 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   const colW = (g) => colCur[g] ?? 0;
   const colX = (g) => { let x = X0; for (let i = 0; i < g; i++) x += colCur[i] ?? 0; return x; };
   const MINI = 30, MINI_TOP = 18, MINI_H = 8;   // collapsed lane: label + a strip of sampled tokens
+  // Chart zoom: the SVG keeps its viewBox in chart units and scales through
+  // its width and height, so geometry, hit testing and keys are untouched.
+  let zoom = 1;
+  const ZOOM_MIN = 0.4, ZOOM_MAX = 4;
+  function setZoom(z, anchorX) {
+    z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+    if (z === zoom) return;
+    // keep the chart point under anchorX (a clientX) where it is
+    const rect = chart.getBoundingClientRect(), ax = (anchorX ?? rect.left + rect.width / 2) - rect.left;
+    const cx = (chart.scrollLeft + ax) / zoom;
+    zoom = z; $('zoomVal').value = `${Math.round(zoom * 100)}%`;
+    render();
+    chart.scrollLeft = cx * zoom - ax;
+  }
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Lanes tween their height between LANE and MINI (and from 0 when they appear).
@@ -795,7 +812,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const sets = liveSets(), setH = sets.length * SAMP_H;
     // The compare tracks label the line ends to the right of the last column.
     const W = xs[xs.length - 1] + 8 + (cmp ? 44 : 0), HT = Math.max(acc, 1) + setH + (cmp ? CMP_H : 0);
-    const svg = el('svg', { key: 'svg', width: W, height: HT, viewBox: `0 0 ${W} ${HT}`, role: 'img',
+    const svg = el('svg', { key: 'svg', width: W * zoom, height: HT * zoom, viewBox: `0 0 ${W} ${HT}`, role: 'img',
       'aria-label': `Candidate mass per generated token, ${runs.length} run(s), ${colCur.length} steps` }, chart);
     const defs = el('defs', { key: 'defs' }, svg);
     const pat = el('pattern', { id: 'hatch', width: 5, height: 5, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, defs);
@@ -1360,6 +1377,13 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   $('n_samples').oninput = () => renderAll();   // the button and the in-chart label name N
   $('keep_too').onchange = () => updateResampleButton();
   $('resample').onclick = () => { if (!canResample()) return; const n = Math.max(2, Math.min(32, +$('n_samples').value || 8)); resample(selected.run, selected.run.start + selected.index, n); };
+  $('zoomIn').onclick = () => setZoom(zoom * 1.25);
+  $('zoomOut').onclick = () => setZoom(zoom / 1.25);
+  chart.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;   // plain scrolling stays scrolling; Ctrl+wheel and trackpad pinch zoom
+    e.preventDefault();
+    setZoom(zoom * Math.exp(-e.deltaY * 0.002), e.clientX);
+  }, { passive: false });
   $('cmp').onclick = () => {
     const show = compareEl.classList.toggle('hidden') === false;
     $('cmp').setAttribute('aria-pressed', show);
@@ -1427,7 +1451,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     selected = isSel(info.run, info.step.index) ? null : { run: info.run, index: info.step.index };
     setCollapsed(info.run, false);
     renderAll();
-    chart.scrollTo({ left: colX(info.g) - chart.clientWidth / 2, behavior: reduceMotion ? 'auto' : 'smooth' });
+    chart.scrollTo({ left: colX(info.g) * zoom - chart.clientWidth / 2, behavior: reduceMotion ? 'auto' : 'smooth' });
   });
   chart.addEventListener('click', (e) => {
     if (e.target._lane) { setCollapsed(e.target._lane, !e.target._lane.collapsed); return; }
@@ -1670,7 +1694,11 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!$('run').disabled) $('run').click(); }
     else if (e.key === 'Escape' && ctrl) { e.preventDefault(); $('stop').click(); }
-    else if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { if (!$('resample').disabled) $('resample').click(); }
+    else if (!e.ctrlKey && !e.metaKey && !e.altKey && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+      if (e.key === 'r') { if (!$('resample').disabled) $('resample').click(); }
+      else if (e.key === '+' || e.key === '=') setZoom(zoom * 1.25);
+      else if (e.key === '-') setZoom(zoom / 1.25);
+    }
   });
   // Fork `parent` at global step g, forcing candidate `cand` instead of what was sampled.
   function branch(parent, g, cand) {
@@ -1810,6 +1838,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     if (q.has(k)) $(k).value = q.get(k);
   }
   if (q.has('closed_p')) $('closed_p').oninput();
+  if (q.has('zoom')) { zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +q.get('zoom') || 1)); $('zoomVal').value = `${Math.round(zoom * 100)}%`; }
   if (q.has('chat')) $('mode').value = q.get('chat') === '1' ? 'chat' : 'raw';
   if (q.has('post')) $('post').checked = q.get('post') === '1';
   if (q.get('advanced') === '1') $('adv').click();
