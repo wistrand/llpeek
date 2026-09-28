@@ -34,7 +34,7 @@ the final message so the user can carry it over; do not edit `../llav`.
 | `scripts/wllama-probe.html` | probe page for the in-browser engine's API behavior                |
 | `scripts/check.mjs`  | headless check of the data layer against a running llama-server         |
 | `scripts/shot.ts`    | headless Chrome screenshots (light and dark) after a run                 |
-| `docs/`              | the whole site, served locally by `deno task serve` and published by GitHub Pages: `index.html` (landing page), `app.html` (the app), `coi-serviceworker.js`, `.nojekyll`, screenshots (`deno task shot`) and thumbnails (`magick screenshot-*.png -resize 50% thumb-*.png`) |
+| `docs/`              | the whole site, served locally by `deno task serve` and published by GitHub Pages: `index.html` (landing page), `app.html` (the app), `favicon.svg` (linked from both pages, dark-mode aware), `coi-serviceworker.js`, `.nojekyll`, screenshots (`deno task shot`) and thumbnails (`magick screenshot-*.png -resize 50% thumb-*.png`) |
 | `agent_docs/`        | per-topic deep dives (linked below)                                     |
 | `README.md`          | human-facing overview and quick start                                   |
 | `~/models/`          | GGUF models (outside the repo, never copy them in)                      |

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .n { fill: #2a78d6; } .r { fill: #2a78d6; fill-opacity: 0.32; } .c { fill: #c3c2b7; }
+    @media (prefers-color-scheme: dark) { .n { fill: #3987e5; } .r { fill: #3987e5; } .c { fill: #52514e; } }
+  </style>
+  <path class="r" d="M10,4 C16,4 16,4 22,4 L22,28 C16,28 16,18 10,18 Z"/>
+  <rect class="n" x="4" y="4" width="6" height="14" rx="1.5"/>
+  <rect class="c" x="4" y="20" width="6" height="8" rx="1.5"/>
+  <rect class="n" x="22" y="4" width="6" height="24" rx="1.5"/>
+</svg>

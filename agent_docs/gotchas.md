@@ -80,6 +80,11 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
   done, error, stopped or ready (plus a few fixed phrases). A new final status
   without one of those words makes every headless check time out, which is
   how the first resampling status was caught (2026-09-27).
+- **`scripts/serve.ts` serves only the extensions in its `types` table**;
+  anything else goes out as `application/octet-stream`, which browsers refuse
+  for icons, stylesheets and modules. The SVG favicon showed nothing under
+  `deno task serve` until `svg` was added (2026-09-28). Add the type when
+  adding a file kind.
 - **Pixel-diffing screenshots across server sessions is noisy.** Two
   screenshots of the reference URL taken an hour apart differed in about
   2,500 pixels although the sampled text was identical: several percentages

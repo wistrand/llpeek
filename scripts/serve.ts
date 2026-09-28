@@ -9,7 +9,7 @@ const root = new URL("../docs/", import.meta.url);
 const PAGES = Deno.env.get("PAGES") === "1";
 const types: Record<string, string> = {
   html: "text/html; charset=utf-8", js: "text/javascript", mjs: "text/javascript", ts: "text/plain",
-  json: "application/json", css: "text/css", png: "image/png",
+  json: "application/json", css: "text/css", png: "image/png", svg: "image/svg+xml", ico: "image/x-icon", txt: "text/plain",
 };
 const headers: Record<string, string> = PAGES ? { "cache-control": "no-store" } : {
   "cache-control": "no-store",
