@@ -123,6 +123,23 @@ Traps in the llama-server API and this machine's setup. Append as discovered.
 
 ## Findings
 
+### Edited text seemed ignored: the old runs grew instead
+
+- **Symptom:** edit the prompt, change the length field, click Run: the old
+  runs were extended with their old text and the new text never ran. Looked
+  like llama-server remembering tokens; the server was verified stateless.
+- **Diagnosis:** the length field's `change` event fires on blur, which is the
+  mousedown of the Run click. Its handler started `extendRuns`, which
+  disabled Run, so the click landed on a disabled button and was dropped
+  silently. Any Run click during a generation was dropped the same way.
+- **Fix (2026-09-29):** Run and "add a run" preempt a running generation
+  instead of being disabled, and the length field extends only runs whose
+  source text and mode still match the textarea; otherwise it sets the
+  length for the next Run. A note under the textarea says when the runs on
+  screen were made from other text.
+- **Takeaway:** never let a blur-triggered handler start work that disables
+  the control the user is about to click; and never drop a click silently.
+
 ### Branches sampled `<think>` although thinking was off
 
 - **Symptom:** the root run skipped a 79% `<think>` candidate, but a branch

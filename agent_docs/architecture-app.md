@@ -252,6 +252,15 @@ add new motion by extending the tween state, so one loop owns all motion.
   show full settings, tooltips add ids and logprobs, the status line appends
   tok/s and path logprob, and the table gains logprob and sampler columns.
   Keep this one switch; do not add per-feature "show technical" toggles.
+- Run and "add a run" preempt whatever is generating (`preempt`: abort, await
+  `active`, then start), the same way a branch click does, and stay enabled
+  while generating; only Stop toggles. A run records the textarea text and
+  mode it was made from (`run.source`, `run.mode`); the length field extends
+  the runs on screen only while every root run still matches the textarea
+  (`sameSetup`), otherwise it just sets the length of the next Run and says
+  so. The reserved note line under the textarea reports "Text edited since
+  the runs on screen" (muted) when that is the case, or the trailing-space
+  warning (amber), whichever applies.
 - Run or "add a run" with the browser engine and no model loaded opens the
   `#noModel` dialog (`askForModel`, a native `<dialog>` via `showModal`):
   it names the selected model with its size note and offers "load it, then

@@ -213,7 +213,7 @@
     <span class="spacer"></span>
     <button id="adv" aria-expanded="false" aria-controls="advanced" title="Technical settings and readouts">advanced &#9656;</button>
   </div>
-  <p id="promptNote" class="warn off" title="The space usually belongs to the next token, so a model rarely sees one here and the first step will look more hesitant than it is.">Trailing space: the first step will look more hesitant than it is.</p>
+  <p id="promptNote" class="warn off">Trailing space: the first step will look more hesitant than it is.</p>
   <div id="browserRow" class="panel hidden">
     <label>model <select id="model"></select></label>
     <label id="modelUrlLabel" class="hidden">model URL <input id="modelUrl" placeholder="https://huggingface.co/<repo>/resolve/main/<file>.gguf" size="52"></label>
@@ -525,6 +525,8 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     ['Gemma 3 1B Instruct Q8_0 (1.1 GB, Google)', 'https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf', 1069306368],
     ['Llama 3.2 1B Instruct Q8_0 (1.3 GB, Meta)', 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf', 1321083008],
     ['SmolLM3 3B Q4_K_M (1.9 GB, Hugging Face, thinking model)', 'https://huggingface.co/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q4_K_M.gguf', 1915305312],
+    ['Qwen2.5-Coder 1.5B Instruct Q8_0 (1.6 GB, code)', 'https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q8_0.gguf', 1646573344],
+    ['Qwen2.5-Coder 3B Instruct Q4_K_M (1.9 GB, code)', 'https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf', 1929903360],
     ['tiny test model: stories260K (1 MB)', 'https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf', 1185376],
   ];
   // Size note next to the load button, so a multi-GB download is announced
@@ -635,7 +637,16 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // over lanes, so lanes stay aligned; they tween like lane heights do.
   let CLOSED_P = 0.85;
   const CLOSED_MIN = 26, OPEN_MIN = 72, OPEN_MAX = 150, PAD = 10, X0 = 16;
-  const promptNote = () => $('promptNote').classList.toggle('off', isChat() || !/[ \t]$/.test($('prompt').value));
+  const promptNote = () => {
+    const el = $('promptNote'), space = !isChat() && /[ \t]$/.test($('prompt').value);
+    const edited = !space && runs.some((r) => !r.parent && !sameSetup(r));
+    el.classList.toggle('off', !(space || edited));
+    el.classList.toggle('warn', space); el.classList.toggle('muted', edited);
+    el.title = space ? 'The space usually belongs to the next token, so a model rarely sees one here and the first step will look more hesitant than it is.'
+      : edited ? 'The runs on screen were made from different text. Press Run to start over with this text; changing the length will not extend them.' : '';
+    el.textContent = space ? 'Trailing space: the first step will look more hesitant than it is.'
+      : edited ? 'Text edited since the runs on screen: press Run to use it.' : el.textContent;
+  };
   $('prompt').addEventListener('input', promptNote);
   $('closed_p').oninput = () => { const v = +$('closed_p').value; if (v >= 0 && v <= 1) { CLOSED_P = v; renderAll(); } };
   const measureCtx = document.createElement('canvas').getContext('2d');
@@ -1356,7 +1367,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     return (active = (async () => {
       if (ctrl) { ctrl.abort(); await active; }
       sampleSet = set; ctrl = new AbortController(); setBusy(true);
-      $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+      $('stop').disabled = false;
       const engine = run.engine, t0 = performance.now();
       try {
         setStatus(`Resampling step ${g} of run ${run.n}: reading the sampler's distribution there\u2026`);
@@ -1376,7 +1387,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       } finally {
         set.generating = false; if (set.keep) set.keep.generating = false;
         ctrl = null; setBusy(false);
-        $('run').disabled = $('add').disabled = false; $('stop').disabled = true;
+        $('stop').disabled = true;
         renderAll();
       }
     })());
@@ -1627,7 +1638,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     animate();
     ctrl = new AbortController(); setBusy(true);
     try {
-      $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+      $('stop').disabled = false;
       if (!run.parent) {
         run.prompt = await preparePrompt(engine);
         const bias = await thinkBias(engine);
@@ -1662,7 +1673,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       run.generating = false; renderAll();
     } finally {
       run.generating = false;
-      $('run').disabled = $('add').disabled = false; $('stop').disabled = true; ctrl = null; setBusy(false);
+      $('stop').disabled = true; ctrl = null; setBusy(false);
     }
     await ensurePost();
   }
@@ -1692,12 +1703,13 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // reports the model's raw belief, so the blocked candidate stays visible.
   const thinkBias = (engine) => ($('think').checked ? null : engine.thinkBias());
   function newRun() {
-    return { n: nextN(), prompt: $('prompt').value, params: params(), start: 0, prefix: [], prefixText: '', parent: null, forkStep: -1, forced: null, steps: [], final: null, laneH: 0, collapsed: false, segments: [] };
+    return { n: nextN(), prompt: $('prompt').value, source: $('prompt').value, mode: $('mode').value, params: params(), start: 0, prefix: [], prefixText: '', parent: null, forkStep: -1, forced: null, steps: [], final: null, laneH: 0, collapsed: false, segments: [] };
   }
   // Thinking is a chat-template feature: turning it on switches to assistant
   // mode; switching to "continue my text" turns thinking off. Both default off.
   $('think').onchange = () => { if ($('think').checked) $('mode').value = 'chat'; };
   $('mode').onchange = () => { if (!isChat()) $('think').checked = false; promptNote(); };
+  $('mode').addEventListener('change', promptNote);
   $('adv').onclick = () => {
     const open = $('advanced').classList.toggle('hidden') === false;
     $('adv').setAttribute('aria-expanded', open);
@@ -1765,7 +1777,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const todo = runs.filter((r) => r.steps.some((s) => !s.post) && !gone(r));
     if (!todo.length) return;
     ctrl = new AbortController(); setBusy(true);
-    $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+    $('stop').disabled = false;
     try {
       for (const run of todo) {
         setStatus(`Sampler filtering: replaying run ${run.n}\u2026`);
@@ -1776,7 +1788,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     } catch (e) {
       setStatus(e.name === 'AbortError' ? 'Stopped' : `error: ${e.message}`);
     } finally {
-      $('run').disabled = $('add').disabled = false; $('stop').disabled = true; ctrl = null; setBusy(false);
+      $('stop').disabled = true; ctrl = null; setBusy(false);
     }
   }
   $('post').onchange = () => { renderAll(); ensurePost(); };
@@ -1788,7 +1800,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     const todo = runs.filter((r) => r.steps.length < n && (!r.final || r.final.stop_type === 'limit') && !gone(r));
     if (!todo.length) { if (runs.length) setStatus(runs.some(gone) ? gone(runs.find(gone)) : `Nothing to extend: runs already have ${n} tokens or ended on their own`); return; }
     ctrl = new AbortController(); setBusy(true);
-    $('run').disabled = $('add').disabled = true; $('stop').disabled = false;
+    $('stop').disabled = false;
     let cur = null;
     try {
       for (const run of todo) {
@@ -1818,11 +1830,20 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
       if (cur) cur.generating = false; renderAll();
     } finally {
       if (cur) cur.generating = false;
-      $('run').disabled = $('add').disabled = false; $('stop').disabled = true; ctrl = null; setBusy(false);
+      $('stop').disabled = true; ctrl = null; setBusy(false);
     }
     await ensurePost();
   }
-  $('n_predict').addEventListener('change', () => { const n = +$('n_predict').value; if (n > 0 && runs.length) active = extendRuns(n); });
+  // A run remembers the textarea text and mode it was made from. The length
+  // field extends the runs on screen only while they still match the
+  // textarea; after an edit it just sets the length of the next Run.
+  const sameSetup = (run) => run.parent || (run.source === $('prompt').value && run.mode === $('mode').value);
+  $('n_predict').addEventListener('change', () => {
+    const n = +$('n_predict').value;
+    if (!(n > 0) || !runs.length) return;
+    if (runs.every(sameSetup)) active = extendRuns(n);
+    else setStatus(`Length ${n} applies to the next run; the text was edited since run 1, so the runs on screen were left alone`);
+  });
 
   // Run or add with the browser engine and no model loaded: ask, load, then do it.
   const needsModel = () => $('engine').value === 'browser' && !browser;
@@ -1835,12 +1856,16 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
     $('noModelCancel').onclick = () => $('noModel').close();
     $('noModel').showModal();
   }
+  // Run and "add a run" preempt whatever is generating (a run, an extension,
+  // a resample, the sampler replay), like a branch click does: abort it, wait
+  // for it to settle, then start. Nothing is dropped silently.
+  const preempt = (then) => (active = (async () => { if (ctrl) { ctrl.abort(); await active; } await then(); })());
   $('run').onclick = () => {
-    if (ctrl) return;
+    if (loading) return;
     if (needsModel()) { askForModel(() => $('run').onclick()); return; }
-    runs = []; selected = null; sampleSet = null; colCur = []; colTarget = []; active = startRun(newRun());
+    preempt(() => { runs = []; selected = null; sampleSet = null; colCur = []; colTarget = []; promptNote(); return startRun(newRun()); });
   };
-  $('add').onclick = () => { if (ctrl) return; if (needsModel()) { askForModel(() => $('add').onclick()); return; } active = startRun(newRun()); };
+  $('add').onclick = () => { if (loading) return; if (needsModel()) { askForModel(() => $('add').onclick()); return; } preempt(() => startRun(newRun())); };
   $('stop').onclick = () => ctrl?.abort();
 
   // Prefill from the query string (?base=...&prompt=...&n_predict=..&run=1), for

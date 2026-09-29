@@ -34,7 +34,8 @@ during the phases without bytes. Steps:
 
 Model URLs: any CORS-enabled URL. The UI offers a curated list (`MODELS` in the
 UI block: Qwen3.5 2B in two quants, SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B,
-SmolLM3 3B Q4, stories260K, each with its byte size for the note next to the
+SmolLM3 3B Q4, Qwen2.5-Coder 1.5B Q8 and 3B Q4 (code models, added
+2026-09-29, checked for size and CORS only), stories260K, each with its byte size for the note next to the
 load button; a typed URL is sized with a HEAD request, which the Hugging Face
 CDN answers with CORS; 1 GB and up is shown as a warning, unless the model is
 already cached: `llpeek.browserCached()` imports wllama's JS module (not the

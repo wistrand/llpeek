@@ -22,6 +22,9 @@ const KNOWN: Record<string, { url: string; note: string }> = {
   "smollm2-360m":      { url: `${HF}/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf`, note: "0.4 GB, Q8_0, small and fast; in the browser list" },
   "gemma3-1b":         { url: `${HF}/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf`, note: "1.1 GB, Q8_0; in the browser list" },
   "llama3.2-1b":       { url: `${HF}/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf`, note: "1.3 GB, Q8_0; in the browser list" },
+  "qwen2.5-coder-1.5b": { url: `${HF}/bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q8_0.gguf`, note: "1.6 GB, Q8_0, code model; in the browser list" },
+  "qwen2.5-coder-3b-q4": { url: `${HF}/bartowski/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf`, note: "1.9 GB, Q4_K_M, code model; in the browser list" },
+  "qwen2.5-coder-3b":   { url: `${HF}/bartowski/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q8_0.gguf`, note: "3.3 GB, Q8_0, code model, server only" },
   "stories260k":       { url: `${HF}/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf`, note: "1 MB, toy model for testing the tooling" },
 };
 

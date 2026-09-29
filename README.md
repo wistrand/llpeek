@@ -61,8 +61,9 @@ The landing page at http://localhost:8000/ is the same one GitHub Pages publishe
 - No llama-server? Set "run on" to "this browser" and press "load model". The
   default is the 2B Qwen at Q4_K_M (1.4 GB) from Hugging Face, downloaded
   once and cached by the browser; the Q8_0 in the list is the same file the
-  server uses, and the list also has SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B
-  and SmolLM3 3B. Any CORS-enabled GGUF URL under 2 GB works. A note next to
+  server uses, and the list also has SmolLM2 360M, Gemma 3 1B, Llama 3.2 1B,
+  SmolLM3 3B and two Qwen2.5-Coder sizes for code. Any CORS-enabled GGUF URL
+  under 2 GB works. A note next to
   the button gives the download size before you start, or says the model is
   already in the browser's cache. The published site
   offers only this engine; the server option appears when the page is served
