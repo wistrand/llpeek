@@ -89,6 +89,13 @@ Any new terminal status message must contain "done", "error", "stopped" or "read
 
 ## Conventions
 
+- Keep the layout as stable as possible. Nothing should move, grow or shrink
+  when state changes (a run starts or ends, a note appears, a model loads):
+  reserve the space up front, size rows from the input rather than from
+  content, scroll inside boxes instead of growing them, and toggle
+  visibility rather than display. Check a before/after pair of screenshots
+  or element sizes for any layout change.
+
 - Never run `deno fmt` or `deno lint`.
 - Never run tests, and never run anything with interactive output.
 - Never install packages; write a script for the user instead.

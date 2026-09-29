@@ -51,7 +51,6 @@
   .range input { width: 110px; }
   output { font-variant-numeric: tabular-nums; min-width: 2.2em; }
   #hint { max-width: 80ch; }
-  form { max-width: 1100px; }
   .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin-top: 8px; }
   .spacer { flex: 1; }
   .panel { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin-top: 8px; padding: 10px 12px;
@@ -62,6 +61,8 @@
   select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
   .muted { color: var(--muted); font-size: 12px; }
   .warn { color: var(--warn); font-weight: 600; }
+  #promptNote { margin: 2px 0 0; min-height: 1.4em; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #promptNote.off { visibility: hidden; }   /* the line stays reserved, so the controls never move */
   #loadInfo { display: inline-flex; align-items: center; gap: 8px; }
   #loadInfo.hidden { display: none; }
   progress { accent-color: var(--chosen); width: 200px; height: 8px; }
@@ -79,11 +80,14 @@
   input, textarea, button { font: inherit; color: var(--ink); background: var(--surface);
          border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-width: 0; }
   textarea { display: block; width: 100%; box-sizing: border-box; min-height: 88px; resize: vertical; font-size: 17px; line-height: 1.4; padding: 8px 10px; }
-  .promptRow { display: flex; gap: 10px; align-items: stretch; }
-  .promptRow textarea { flex: 1; }
-  .actions { display: flex; flex-direction: column; gap: 6px; }
-  .actions button { min-width: 88px; }
-  .actions .primary { flex: 1; padding: 6px 22px; }
+  .promptRow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+  .promptRow textarea { flex: 1 1 340px; height: 144px; }   /* five lines of 17 px text */
+  /* The output strip beside the prompt. contain: size keeps its content out of
+     the row's height, so the row is as tall as the prompt box, the strip
+     scrolls inside, and nothing changes size when the first run arrives. */
+  .promptRow #text { flex: 1 1 340px; margin: 0; min-height: 144px; max-height: none; box-sizing: border-box; contain: size; align-self: stretch; }
+  .actions { display: flex; flex-direction: column; gap: 6px; align-self: flex-start; }
+  .actions button { min-width: 88px; padding: 6px 22px; }
   button { cursor: pointer; }
   button.primary { background: var(--chosen); border-color: var(--chosen); color: #fff; font-weight: 600; padding: 6px 22px; }
   button.primary:disabled { opacity: 0.5; cursor: default; }
@@ -108,8 +112,8 @@
   }
   #text { margin: 8px 0; padding: 8px; background: var(--surface); border: 1px solid var(--grid);
           border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 17px; line-height: 1.4;
-          max-height: 240px; overflow: auto; user-select: text; }
-  #text:empty { display: none; }
+          overflow: auto; user-select: text; }
+  #text:empty::before { content: "The model's output will appear here."; color: var(--muted); font-size: 13px; }
   #text .t { cursor: pointer; border-radius: 2px; }
   #text .t:hover { background: var(--grid); }
   #text .p { color: var(--muted); }
@@ -184,8 +188,8 @@
       <button id="run" class="primary" title="Ctrl+Enter">Run</button>
       <button id="stop" disabled title="Escape">Stop</button>
     </div>
+    <div id="text"></div>
   </div>
-  <p id="promptNote" class="warn hidden">The prompt ends with a space. The space usually belongs to the next token, so a model rarely sees one here and the first step will look more hesitant than it is. Remove it unless that is what you want to test.</p>
   <div class="bar">
     <label title="0 = always take the most likely token. Higher = more surprising choices.">randomness
       <span class="range"><input id="temperature" type="range" min="0" max="2" step="0.1" value="0.8"><output id="tempOut">0.8</output></span>
@@ -209,6 +213,7 @@
     <span class="spacer"></span>
     <button id="adv" aria-expanded="false" aria-controls="advanced" title="Technical settings and readouts">advanced &#9656;</button>
   </div>
+  <p id="promptNote" class="warn off" title="The space usually belongs to the next token, so a model rarely sees one here and the first step will look more hesitant than it is.">Trailing space: the first step will look more hesitant than it is.</p>
   <div id="browserRow" class="panel hidden">
     <label>model <select id="model"></select></label>
     <label id="modelUrlLabel" class="hidden">model URL <input id="modelUrl" placeholder="https://huggingface.co/<repo>/resolve/main/<file>.gguf" size="52"></label>
@@ -232,7 +237,6 @@
   </div>
 </form>
 <div id="status"><span id="spin" aria-hidden="true"></span><span id="statusText">idle</span></div>
-<div id="text"></div>
 <div class="toolbar">
   <div class="legend" id="legend">
     <span class="l-cand">a token the model considered but did not pick. Click it for one continuation from there.</span>
@@ -631,7 +635,7 @@ if (!crossOriginIsolated && 'serviceWorker' in navigator && window.isSecureConte
   // over lanes, so lanes stay aligned; they tween like lane heights do.
   let CLOSED_P = 0.85;
   const CLOSED_MIN = 26, OPEN_MIN = 72, OPEN_MAX = 150, PAD = 10, X0 = 16;
-  const promptNote = () => $('promptNote').classList.toggle('hidden', isChat() || !/[ \t]$/.test($('prompt').value));
+  const promptNote = () => $('promptNote').classList.toggle('off', isChat() || !/[ \t]$/.test($('prompt').value));
   $('prompt').addEventListener('input', promptNote);
   $('closed_p').oninput = () => { const v = +$('closed_p').value; if (v >= 0 && v <= 1) { CLOSED_P = v; renderAll(); } };
   const measureCtx = document.createElement('canvas').getContext('2d');

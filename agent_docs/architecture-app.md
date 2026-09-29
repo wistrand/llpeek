@@ -270,15 +270,21 @@ add new motion by extending the tween state, so one loop owns all motion.
   the chosen engine (the loaded browser model's info, or "pick a model"; for
   the server, a fresh check that says which model it runs). The idle phrases
   in `scripts/headless.ts` include these status lines.
-- Controls: prompt textarea (17 px text, the same size as the output strip) with Run (primary; Ctrl+Enter or
-  Cmd+Enter) and Stop (Escape) stacked in a column to its right
-  (`.promptRow`, `.actions`), then the bar: randomness slider, length, mode, think first, run on. Choosing the
+- Top row (`.promptRow`, wraps on narrow windows): prompt textarea (17 px
+  text) on the left, Run (primary; Ctrl+Enter or Cmd+Enter) and Stop
+  (Escape) stacked in a column (`.actions`, both the same size, top-aligned), and the output strip `#text` on
+  the right at the same text size, always present (a muted placeholder while
+  empty) with `contain: size` so its content never sets the row's height: the
+  row is as tall as the prompt box (144 px, five lines, unless dragged) and
+  the strip scrolls inside; a 144 px minimum keeps it a box when it wraps
+  under the prompt on narrow windows. The form spans the full page width,
+  like the toolbar and the chart. Below it the bar of fields: randomness slider, length, mode, think first, run on. Choosing the
   browser engine reveals a model row (curated public URLs, or a URL) with a load
   button, a size note (a warning above 1 GB, or "already in this browser"
   when wllama's cache holds the file) and progress. Advanced: server
   URL, candidates per step (n_probs), top_k, top_p, min_p, seed, the
   closed-column threshold, "add a run to compare", "show sampler filtering".
-- Text strip: one row per run, prompt in muted ink, then each step's `text`.
+- Text strip (`#text`, in the top row beside the prompt): one row per run, prompt in muted ink, then each step's `text`.
   It scrolls, is selectable, and each token is hoverable (tooltip) and
   clickable (select the step, expand its lane, scroll the chart to its column).
 - Tooltip (`#tip`, fixed position): token, id, p with its surprisal in bits
@@ -287,7 +293,10 @@ add new motion by extending the tween state, so one loop owns all motion.
   surprisal per picked token.
 - `#promptNote` warns when the prompt ends in a space or tab: the space usually
   belongs to the next token, so the first step looks more hesitant than it is
-  (the token-healing problem). Checked on input and after query-string prefill. Nodes thinner than 12 px get an invisible enlarged hit rect.
+  (the token-healing problem; the long form is the tooltip). One line is
+  always reserved under the textarea and the note toggles `visibility`
+  (class `off`), so showing it never shifts the controls. Checked on input
+  and after query-string prefill, hidden in chat mode. Nodes thinner than 12 px get an invisible enlarged hit rect.
 - Click a sampled node to select its step (outlined in the strip and the table); click again to clear.
 - Click a gray candidate to branch from it. Click a candidate already branched to select that lane.
 - Legend lists runs with their settings and fork origin; click to select a lane.
